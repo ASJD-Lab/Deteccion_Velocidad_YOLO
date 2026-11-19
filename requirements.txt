@@ -1,6 +1,7 @@
-gradio
 ultralytics
 opencv-python-headless
+streamlit
+pillow
 numpy
 shapely
 lap
