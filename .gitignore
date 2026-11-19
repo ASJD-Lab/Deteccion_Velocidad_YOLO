@@ -1,0 +1,18 @@
+# Entornos virtuales de Python
+venv/
+env/
+__pycache__/
+
+# Archivos de caché de Python
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos temporales de video o datos generados por la app
+temp_video.mp4
+*.avi
+*.mp4
+
+# Dependencias del sistema o credenciales locales (si usas archivos .env)
+.env
+.DS_Store
