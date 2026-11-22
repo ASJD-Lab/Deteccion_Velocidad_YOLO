@@ -8,6 +8,28 @@ let trabajadorOCR = null;
 
 let inicializandoOCR = false;
 
+// Canvas reutilizable para el preprocesamiento de matrículas.
+// Se redimensiona según necesidad, evitando crear uno nuevo
+// en cada intento OCR.
+let _canvasOCR = null;
+let _ctxOCR = null;
+
+function _obtenerCanvasOCR(ancho, alto) {
+
+    if (!_canvasOCR) {
+        _canvasOCR = document.createElement("canvas");
+        _ctxOCR = _canvasOCR.getContext("2d", {
+            willReadFrequently: true
+        });
+    }
+
+    _canvasOCR.width = ancho;
+    _canvasOCR.height = alto;
+
+    return { canvas: _canvasOCR, ctx: _ctxOCR };
+
+}
+
 
 // ======================================================
 // 1. INICIALIZAR MOTOR OCR
@@ -50,8 +72,11 @@ async function inicializarOCR() {
             tessedit_char_whitelist:
                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
 
+            // SINGLE_BLOCK es más tolerante que SINGLE_LINE:
+            // captura texto en múltiples líneas (estado + número),
+            // lo que mejora la lectura de placas con dos renglones.
             tessedit_pageseg_mode:
-                Tesseract.PSM.SINGLE_LINE
+                Tesseract.PSM.SINGLE_BLOCK
 
         });
 
@@ -80,7 +105,77 @@ async function inicializarOCR() {
 
 
 // ======================================================
-// 2. PREPARAR IMAGEN DE MATRÍCULA
+// 2. CALCULAR UMBRAL DE BINARIZACIÓN (MÉTODO DE OTSU)
+// Ajusta el umbral automáticamente según el histograma
+// de la imagen, lo que mejora la lectura con iluminación
+// variable (sombras, reflejos, noche).
+// ======================================================
+
+function calcularUmbralOtsu(datos, longitud) {
+
+    // Construir histograma de intensidades (256 niveles).
+    const histograma = new Int32Array(256);
+
+    for (let i = 0; i < longitud; i += 4) {
+
+        const gris = Math.round(
+            0.299 * datos[i] +
+            0.587 * datos[i + 1] +
+            0.114 * datos[i + 2]
+        );
+
+        histograma[gris]++;
+
+    }
+
+    const totalPixeles = longitud / 4;
+
+    let suma = 0;
+
+    for (let t = 0; t < 256; t++) {
+        suma += t * histograma[t];
+    }
+
+    let sumaPeso = 0;
+    let pesoPorDebajo = 0;
+    let varianzaMaxima = 0;
+    let umbral = 128;
+
+    for (let t = 0; t < 256; t++) {
+
+        pesoPorDebajo += histograma[t];
+
+        if (pesoPorDebajo === 0) continue;
+
+        const pesoPorArriba = totalPixeles - pesoPorDebajo;
+
+        if (pesoPorArriba === 0) break;
+
+        sumaPeso += t * histograma[t];
+
+        const mediaPorDebajo = sumaPeso / pesoPorDebajo;
+        const mediaPorArriba =
+            (suma - sumaPeso) / pesoPorArriba;
+
+        const varianza =
+            pesoPorDebajo *
+            pesoPorArriba *
+            (mediaPorDebajo - mediaPorArriba) ** 2;
+
+        if (varianza > varianzaMaxima) {
+            varianzaMaxima = varianza;
+            umbral = t;
+        }
+
+    }
+
+    return umbral;
+
+}
+
+
+// ======================================================
+// 3. PREPARAR IMAGEN DE MATRÍCULA
 // ======================================================
 
 function prepararImagenOCR(imagen) {
@@ -99,71 +194,70 @@ function prepararImagenOCR(imagen) {
         return null;
     }
 
-    // Ampliar la imagen para facilitar la lectura.
+    // Escalar para facilitar la lectura. Mínimo 2×,
+    // máximo 6× (aumentado de 4× para placas lejanas).
     const escala = Math.max(
         2,
-        Math.min(4, 500 / anchoOriginal)
+        Math.min(6, 500 / anchoOriginal)
     );
 
     const ancho = Math.round(anchoOriginal * escala);
     const alto = Math.round(altoOriginal * escala);
 
-    const canvas = document.createElement("canvas");
-
-    canvas.width = ancho;
-    canvas.height = alto;
-
-    const ctx = canvas.getContext("2d", {
-        willReadFrequently: true
-    });
+    const { canvas, ctx } = _obtenerCanvasOCR(ancho, alto);
 
     // Fondo blanco.
     ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, ancho, alto);
 
-    ctx.fillRect(
-        0,
-        0,
-        ancho,
-        alto
-    );
+    // Desactivar suavizado para preservar bordes de caracteres.
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(imagen, 0, 0, ancho, alto);
 
-    // Dibujar imagen ampliada.
-    ctx.drawImage(
-        imagen,
-        0,
-        0,
-        ancho,
-        alto
-    );
+    const datos = ctx.getImageData(0, 0, ancho, alto);
 
-    const datos = ctx.getImageData(
-        0,
-        0,
-        ancho,
-        alto
-    );
-
-    // Convertir a escala de grises y aumentar contraste.
+    // Pasar primero a escala de grises.
     for (let i = 0; i < datos.data.length; i += 4) {
-
-        const gris =
+        const gris = Math.round(
             0.299 * datos.data[i] +
             0.587 * datos.data[i + 1] +
-            0.114 * datos.data[i + 2];
-
-        const contraste = gris > 135 ? 255 : 0;
-
-        datos.data[i] = contraste;
-        datos.data[i + 1] = contraste;
-        datos.data[i + 2] = contraste;
-
+            0.114 * datos.data[i + 2]
+        );
+        datos.data[i]     = gris;
+        datos.data[i + 1] = gris;
+        datos.data[i + 2] = gris;
     }
 
-    ctx.putImageData(
-        datos,
-        0,
-        0
+    // Calcular umbral con Otsu.
+    const umbral = calcularUmbralOtsu(datos.data, datos.data.length);
+
+    console.log(`[OCR preproceso] umbral Otsu: ${umbral}, tamaño: ${ancho}×${alto}`);
+
+    // Si Otsu devuelve un valor extremo (<30 o >220), la imagen
+    // es casi uniforme y binarizar la destruiría. Usar 128 como
+    // fallback para no invertir los colores.
+    const umbralFinal = (umbral < 30 || umbral > 220) ? 128 : umbral;
+
+    for (let i = 0; i < datos.data.length; i += 4) {
+        const valor = datos.data[i] > umbralFinal ? 255 : 0;
+        datos.data[i]     = valor;
+        datos.data[i + 1] = valor;
+        datos.data[i + 2] = valor;
+    }
+
+    ctx.putImageData(datos, 0, 0);
+
+    // Log visual de la imagen procesada que recibe Tesseract.
+    console.log(
+        `%c   `,
+        `font-size:1px; ` +
+        `padding: ${Math.round(alto / 2)}px ${Math.round(ancho / 2)}px; ` +
+        `background: url(${canvas.toDataURL()}) no-repeat center/contain; ` +
+        `border: 2px solid #facc15; image-rendering: pixelated;`
     );
+
+    // Enlace directo para inspección: clic derecho → Abrir en nueva pestaña
+    console.log("[OCR imagen procesada] →", canvas.toDataURL());
 
     return canvas;
 
@@ -171,7 +265,7 @@ function prepararImagenOCR(imagen) {
 
 
 // ======================================================
-// 3. LIMPIAR TEXTO RECONOCIDO
+// 4. LIMPIAR TEXTO RECONOCIDO
 // ======================================================
 
 function normalizarMatricula(texto) {
@@ -189,7 +283,7 @@ function normalizarMatricula(texto) {
 
 
 // ======================================================
-// 4. LEER MATRÍCULA
+// 5. LEER MATRÍCULA
 // ======================================================
 
 async function leerMatricula(imagen) {
@@ -234,17 +328,22 @@ async function leerMatricula(imagen) {
             resultado.data.confidence || 0
         );
 
-        // Evitar aceptar lecturas demasiado cortas o dudosas.
-        // No se impone un formato estatal específico.
+        // Criterio de aceptación:
+        // - Mínimo 3 caracteres (cubre placas parcialmente legibles)
+        // - Máximo 10 caracteres
+        // - Confianza >= 20 (Tesseract devuelve valores bajos en
+        //   imágenes de video; exigir 35 descarta lecturas válidas)
         const identificada =
-            texto.length >= 5 &&
-            texto.length <= 8 &&
-            confianza >= 35;
+            texto.length >= 3 &&
+            texto.length <= 10 &&
+            confianza >= 20;
 
         console.log("Resultado OCR:", {
             texto,
             confianza,
-            identificada
+            identificada,
+            tamanoImagen: `${imagenPreparada.width}×${imagenPreparada.height}px`,
+            textoRaw: textoOriginal.trim()
         });
 
         return {

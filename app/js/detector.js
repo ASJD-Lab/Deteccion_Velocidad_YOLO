@@ -17,6 +17,9 @@ const contextoDetector = canvasDetector.getContext("2d", {
     willReadFrequently: true
 });
 
+// Buffer reutilizable del tensor CHW (evita allocar 1.2 MB en cada inferencia).
+const _tensorDetector = new Float32Array(3 * TAMANO_ENTRADA * TAMANO_ENTRADA);
+
 
 // ======================================================
 // 1. CARGAR MODELO ONNX
@@ -32,7 +35,7 @@ async function cargarModelo() {
             "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 
         modeloDetector = await ort.InferenceSession.create(
-            "../modelos/best.onnx",
+            "../modelos/best_deteccion.onnx",
             {
                 executionProviders: ["wasm"],
                 graphOptimizationLevel: "all"
@@ -161,7 +164,9 @@ function preprocesarImagen(imagen) {
 
     const area = TAMANO_ENTRADA * TAMANO_ENTRADA;
 
-    const tensor = new Float32Array(3 * area);
+    // Reutilizar el buffer preallocado en lugar de crear
+    // un nuevo Float32Array (1.2 MB) en cada inferencia.
+    const tensor = _tensorDetector;
 
     // Convertir RGBA a RGB normalizado y formato CHW.
     for (let i = 0; i < area; i++) {
@@ -231,19 +236,20 @@ function calcularIoU(a, b) {
 
 function aplicarNMS(detecciones, umbral = 0.45) {
 
-    detecciones.sort(
+    // Trabajar sobre una copia para no mutar el array de entrada.
+    let candidatos = [...detecciones].sort(
         (a, b) => b.confianza - a.confianza
     );
 
     const seleccionadas = [];
 
-    while (detecciones.length > 0) {
+    while (candidatos.length > 0) {
 
-        const mejor = detecciones.shift();
+        const mejor = candidatos.shift();
 
         seleccionadas.push(mejor);
 
-        detecciones = detecciones.filter(
+        candidatos = candidatos.filter(
             deteccion =>
                 calcularIoU(mejor, deteccion) < umbral
         );

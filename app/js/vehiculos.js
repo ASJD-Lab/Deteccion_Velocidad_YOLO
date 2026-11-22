@@ -36,6 +36,11 @@ async function cargarModeloVehiculos() {
 
         console.log("Cargando modelo YOLOv8n de vehículos...");
 
+        // Asegurar que ONNX Runtime encuentre los archivos WASM
+        // tanto en desarrollo local como en Netlify.
+        ort.env.wasm.wasmPaths =
+            "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+
         modeloVehiculos = await ort.InferenceSession.create(
             "../modelos/vehiculos.onnx",
             {

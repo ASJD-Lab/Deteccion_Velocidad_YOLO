@@ -47,6 +47,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const estadoModelo = document.getElementById("estadoModelo");
 
+    const metodoVelocidadInput = document.getElementById("metodoVelocidad");
+    const factorEscalaInput    = document.getElementById("factorEscala");
+
 
     // ==================================================
     // 2. VARIABLES DE CONTROL
@@ -61,7 +64,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let ultimaDeteccion = 0;
     let bucleRAF = null;
 
-    const INTERVALO_DETECCION = 250;
+    const INTERVALO_DETECCION = 100;
 
     let maximoRegistrado = 0;
     let infraccionesRegistradas = 0;
@@ -90,6 +93,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const contextoRecorte = canvasRecorte.getContext("2d", {
         willReadFrequently: true
     });
+
+    // Canvas reutilizable para recortar matrículas.
+    // Evita crear un nuevo elemento DOM en cada intento OCR.
+    const canvasPlacaOCR = document.createElement("canvas");
+
+    const ctxPlacaOCR = canvasPlacaOCR.getContext("2d", {
+        willReadFrequently: true
+    });
+
+    // Tiempo del último frame procesado para detectar
+    // cuando el video hace loop y resetear el tracker.
+    let tiempoFrameAnterior = 0;
 
 
     // ==================================================
@@ -331,38 +346,48 @@ document.addEventListener("DOMContentLoaded", () => {
         const placaX = recorte.x + placa.x1;
         const placaY = recorte.y + placa.y1;
 
-        // Crear canvas exclusivo para la matrícula.
-        const canvasPlaca = document.createElement("canvas");
+        // Añadir padding para que Tesseract no pierda
+        // caracteres cortados en los bordes de la caja.
+        const padH = Math.round(placaAncho * 0.15);
+        const padV = Math.round(placaAlto * 0.20);
 
-        canvasPlaca.width = Math.max(
-            1,
-            Math.ceil(placaAncho)
-        );
+        const srcX = Math.max(0, placa.x1 - padH);
+        const srcY = Math.max(0, placa.y1 - padV);
+        const srcX2 = Math.min(recorte.ancho, placa.x2 + padH);
+        const srcY2 = Math.min(recorte.alto, placa.y2 + padV);
+        const srcAncho = srcX2 - srcX;
+        const srcAlto  = srcY2 - srcY;
 
-        canvasPlaca.height = Math.max(
-            1,
-            Math.ceil(placaAlto)
-        );
+        // Reutilizar canvas preallocado para evitar
+        // crear un nuevo elemento DOM en cada intento OCR.
+        canvasPlacaOCR.width  = Math.max(1, Math.ceil(srcAncho));
+        canvasPlacaOCR.height = Math.max(1, Math.ceil(srcAlto));
 
-        const ctxPlaca = canvasPlaca.getContext("2d", {
-            willReadFrequently: true
-        });
-
-        // Recortar desde la captura del vehículo.
-        ctxPlaca.drawImage(
+        // Recortar desde la captura del vehículo (con padding).
+        ctxPlacaOCR.drawImage(
             recorte.imagen,
-            placa.x1,
-            placa.y1,
-            placaAncho,
-            placaAlto,
+            srcX,
+            srcY,
+            srcAncho,
+            srcAlto,
             0,
             0,
-            canvasPlaca.width,
-            canvasPlaca.height
+            canvasPlacaOCR.width,
+            canvasPlacaOCR.height
         );
+
+        console.log(
+            `[OCR] Vehículo ${vehiculo.id}: ` +
+            `caja placa ${Math.round(placaAncho)}×${Math.round(placaAlto)}px ` +
+            `(confianza modelo: ${(placa.confianza * 100).toFixed(1)}%)`
+        );
+
+        // Recorte crudo (antes del preprocesamiento OCR).
+        // Copia el link y pégalo en una pestaña para ver qué detectó el modelo.
+        console.log("[OCR recorte crudo] →", canvasPlacaOCR.toDataURL());
 
         // Aplicar reconocimiento OCR.
-        const resultadoOCR = await leerMatricula(canvasPlaca);
+        const resultadoOCR = await leerMatricula(canvasPlacaOCR);
 
         if (sesionActual !== sesionVideo) return;
 
@@ -378,6 +403,9 @@ document.addEventListener("DOMContentLoaded", () => {
             confianza: placa.confianza
 
         };
+
+        // Capturar imagen de la placa para incluirla en la multa.
+        capturarImagenPlaca(vehiculo);
 
         vehiculo.ultimoResultadoOCR = resultadoOCR;
 
@@ -731,6 +759,9 @@ document.addEventListener("DOMContentLoaded", () => {
             celdaMatricula.textContent = vehiculo.matricula;
         }
 
+        // Actualizar imagen de placa si ya fue capturada.
+        actualizarImagenPlacaMulta(vehiculo);
+
         console.log(
             `Ticket actualizado con matrícula ${vehiculo.matricula}.`
         );
@@ -739,87 +770,198 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
     // ==================================================
-    // 15. REGISTRAR INFRACCIONES
+    // 15. CREAR FILA DE MULTA EN LA TABLA
     // ==================================================
 
-    function registrarInfraccion(vehiculo, velocidad) {
+    function crearFilaMulta(vehiculo, velocidad) {
 
-        const limite = Number(limiteVelocidad.value);
-
-        const resultado = verificarInfraccion(
-            velocidad,
-            limite
-        );
+        const limite   = Number(limiteVelocidad.value);
+        const resultado = verificarInfraccion(velocidad, limite);
 
         if (!resultado.infraccion) return;
-
         if (multasRegistradas.has(vehiculo.id)) return;
 
         multasRegistradas.add(vehiculo.id);
-
         infraccionesRegistradas++;
-
         totalInfracciones.textContent = infraccionesRegistradas;
 
-        if (tablaMultas) {
+        if (!tablaMultas) return;
 
-            const mensaje = tablaMultas.querySelector(".empty-message");
+        const mensaje = tablaMultas.querySelector(".empty-message");
+        if (mensaje) tablaMultas.innerHTML = "";
 
-            if (mensaje) {
-                tablaMultas.innerHTML = "";
+        const fila = document.createElement("tr");
+        fila.dataset.vehiculoId = vehiculo.id;
+
+        // --- Celda imagen de placa ---
+        const celdaImagen = document.createElement("td");
+        celdaImagen.className = "imagen-placa-multa";
+
+        if (vehiculo.imagenPlaca) {
+
+            const img = document.createElement("img");
+            img.src    = vehiculo.imagenPlaca;
+            img.alt    = "Placa";
+            img.style.cssText =
+                "max-width:120px; max-height:50px; " +
+                "border:2px solid #38bdf8; border-radius:4px; " +
+                "image-rendering:pixelated;";
+            celdaImagen.appendChild(img);
+
+        } else {
+            celdaImagen.textContent = "—";
+            celdaImagen.style.color = "#64748b";
+        }
+
+        // --- Celda matrícula ---
+        const celdaMatricula = document.createElement("td");
+        celdaMatricula.className = "matricula-multa";
+        celdaMatricula.textContent = vehiculo.matricula || "No identificada";
+
+        // --- Resto de celdas ---
+        const celdaVelocidad = document.createElement("td");
+        celdaVelocidad.textContent = `${velocidad.toFixed(2)} km/h`;
+
+        const celdaLimite = document.createElement("td");
+        celdaLimite.textContent = `${limite} km/h`;
+
+        const celdaExceso = document.createElement("td");
+        celdaExceso.textContent = `${resultado.exceso.toFixed(2)} km/h`;
+        celdaExceso.style.color = "#ef4444";
+        celdaExceso.style.fontWeight = "bold";
+
+        const celdaFecha = document.createElement("td");
+        celdaFecha.textContent = obtenerFechaHora();
+
+        fila.append(
+            celdaImagen,
+            celdaMatricula,
+            celdaVelocidad,
+            celdaLimite,
+            celdaExceso,
+            celdaFecha
+        );
+
+        tablaMultas.prepend(fila);
+        filasMultas.set(vehiculo.id, fila);
+
+        console.warn("INFRACCIÓN REGISTRADA:", {
+            vehiculo: vehiculo.id,
+            matricula: vehiculo.matricula || "No identificada",
+            velocidad,
+            limite,
+            exceso: resultado.exceso,
+            fecha: obtenerFechaHora()
+        });
+
+    }
+
+
+    // ==================================================
+    // 15b. REGISTRAR INFRACCIONES (MÉTODO TRES LÍNEAS)
+    // ==================================================
+
+    function registrarInfraccion(vehiculo, velocidad) {
+        crearFilaMulta(vehiculo, velocidad);
+    }
+
+
+    // ==================================================
+    // 15c. REGISTRAR INFRACCIONES (MÉTODO PERSPECTIVA)
+    // Guarda la velocidad máxima observada y registra la
+    // multa solo cuando el vehículo sale del encuadre o
+    // cuando la velocidad supera claramente el límite,
+    // para evitar registros duplicados por fluctuaciones.
+    // ==================================================
+
+    function registrarInfraccionPerspectiva(vehiculo, velocidad) {
+
+        // Si ya fue multado, solo actualizar la imagen de placa
+        // si aún no la tenemos.
+        if (multasRegistradas.has(vehiculo.id)) {
+            actualizarImagenPlacaMulta(vehiculo);
+            return;
+        }
+
+        const limite = Number(limiteVelocidad.value);
+
+        if (velocidad <= limite) return;
+
+        // Acumular la velocidad máxima vista para este vehículo.
+        if (
+            !vehiculo.velocidadMaximaObservada ||
+            velocidad > vehiculo.velocidadMaximaObservada
+        ) {
+            vehiculo.velocidadMaximaObservada = velocidad;
+
+            // Capturar imagen de placa en el momento de mayor
+            // velocidad para incluirla en la multa.
+            if (vehiculo.deteccionMatricula) {
+                capturarImagenPlaca(vehiculo);
             }
-
-            const fila = document.createElement("tr");
-
-            fila.dataset.vehiculoId = vehiculo.id;
-
-            const celdaMatricula = document.createElement("td");
-            celdaMatricula.className = "matricula-multa";
-
-            const celdaVelocidad = document.createElement("td");
-            const celdaLimite = document.createElement("td");
-            const celdaExceso = document.createElement("td");
-            const celdaFecha = document.createElement("td");
-
-            celdaMatricula.textContent =
-                vehiculo.matricula || "No identificada";
-
-            celdaVelocidad.textContent =
-                `${velocidad.toFixed(2)} km/h`;
-
-            celdaLimite.textContent =
-                `${limite} km/h`;
-
-            celdaExceso.textContent =
-                `${resultado.exceso.toFixed(2)} km/h`;
-
-            celdaFecha.textContent = obtenerFechaHora();
-
-            fila.append(
-                celdaMatricula,
-                celdaVelocidad,
-                celdaLimite,
-                celdaExceso,
-                celdaFecha
-            );
-
-            tablaMultas.prepend(fila);
-
-            filasMultas.set(vehiculo.id, fila);
 
         }
 
-        console.warn(
-            "INFRACCIÓN REGISTRADA:",
-            {
-                vehiculo: vehiculo.id,
-                matricula: vehiculo.matricula || "No identificada",
-                velocidad,
-                limite,
-                exceso: resultado.exceso,
-                fecha: obtenerFechaHora()
-            }
-        );
+        // Registrar la multa cuando la velocidad supera el
+        // límite en más de un 5 % (margen para evitar ruido).
+        if (velocidad > limite * 1.05) {
+            crearFilaMulta(vehiculo, velocidad);
+        }
+
+    }
+
+
+    // ==================================================
+    // 15d. CAPTURAR IMAGEN DE LA PLACA
+    // ==================================================
+
+    function capturarImagenPlaca(vehiculo) {
+
+        const placa = vehiculo.deteccionMatricula;
+        if (!placa) return;
+
+        const pad = 6;
+        const x = Math.max(0, Math.floor(placa.x1 - pad));
+        const y = Math.max(0, Math.floor(placa.y1 - pad));
+        const w = Math.min(video.videoWidth,  Math.ceil(placa.x2 + pad)) - x;
+        const h = Math.min(video.videoHeight, Math.ceil(placa.y2 + pad)) - y;
+
+        if (w < 5 || h < 5) return;
+
+        canvasRecorte.width  = w;
+        canvasRecorte.height = h;
+
+        contextoRecorte.drawImage(video, x, y, w, h, 0, 0, w, h);
+
+        vehiculo.imagenPlaca = canvasRecorte.toDataURL("image/png");
+
+    }
+
+
+    // ==================================================
+    // 15e. ACTUALIZAR IMAGEN DE PLACA EN MULTA EXISTENTE
+    // ==================================================
+
+    function actualizarImagenPlacaMulta(vehiculo) {
+
+        if (!vehiculo.imagenPlaca) return;
+
+        const fila = filasMultas.get(vehiculo.id);
+        if (!fila) return;
+
+        const celda = fila.querySelector(".imagen-placa-multa");
+        if (!celda || celda.querySelector("img")) return;
+
+        const img = document.createElement("img");
+        img.src = vehiculo.imagenPlaca;
+        img.alt = "Placa";
+        img.style.cssText =
+            "max-width:120px; max-height:50px; " +
+            "border:2px solid #38bdf8; border-radius:4px; " +
+            "image-rendering:pixelated;";
+
+        celda.textContent = "";
+        celda.appendChild(img);
 
     }
 
@@ -923,7 +1065,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (tablaMultas) {
             tablaMultas.innerHTML = `
                 <tr class="empty-message">
-                    <td colspan="5">No hay infracciones registradas.</td>
+                    <td colspan="6">No hay infracciones registradas.</td>
                 </tr>
             `;
         }
@@ -999,6 +1141,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ultimaDeteccion = 0;
         deteccionEnCurso = false;
         ultimoIntentoOCR = 0;
+        tiempoFrameAnterior = 0;
 
         actualizarEstado(
             "SISTEMA EN ESPERA",
@@ -1032,7 +1175,39 @@ document.addEventListener("DOMContentLoaded", () => {
                 const confianza = Number(confianzaInput.value);
 
                 // --------------------------------------
-                // 1. DETECTAR VEHÍCULOS
+                // 1. CAPTURAR TIEMPO DEL FRAME ACTUAL
+                // Se debe leer ANTES de la inferencia ONNX
+                // porque ésta puede tardar 300–800 ms en WASM,
+                // tiempo durante el cual el video sigue
+                // avanzando. Usar currentTime post-inferencia
+                // produce tiempos de cruce incorrectos y
+                // velocidades sistemáticamente subestimadas.
+                // --------------------------------------
+
+                const tiempoFrame = video.currentTime;
+
+                // Detectar loop del video: si el tiempo actual
+                // es menor que el del frame anterior significa
+                // que el video reinició. Se resetea el tracker
+                // para evitar tiempos de cruce mezclados entre
+                // ciclos distintos (lo que produce velocidades
+                // absurdas o cruces no detectados).
+                if (tiempoFrame < tiempoFrameAnterior - 0.5) {
+
+                    console.log(
+                        "Loop de video detectado. " +
+                        "Reiniciando seguimiento."
+                    );
+
+                    reiniciarSeguimiento();
+                    limpiarRegistros();
+
+                }
+
+                tiempoFrameAnterior = tiempoFrame;
+
+                // --------------------------------------
+                // 2. DETECTAR VEHÍCULOS
                 // --------------------------------------
 
                 const detecciones = await detectarVehiculos(
@@ -1043,7 +1218,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!procesando) return;
 
                 // --------------------------------------
-                // 2. PREPARAR CANVAS
+                // 3. PREPARAR CANVAS
                 // --------------------------------------
 
                 if (
@@ -1066,7 +1241,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 );
 
                 // --------------------------------------
-                // 3. DIBUJAR VEHÍCULOS
+                // 4. DIBUJAR VEHÍCULOS
                 // --------------------------------------
 
                 dibujarVehiculos(
@@ -1076,7 +1251,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 );
 
                 // --------------------------------------
-                // 4. ACTUALIZAR SEGUIMIENTO
+                // 5. ACTUALIZAR SEGUIMIENTO
                 // --------------------------------------
 
                 const vehiculos = actualizarSeguimiento(
@@ -1084,7 +1259,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 );
 
                 // --------------------------------------
-                // 5. CALCULAR POSICIÓN DE LAS LÍNEAS
+                // 6. CALCULAR POSICIÓN DE LAS LÍNEAS
                 // --------------------------------------
 
                 const configuracion = obtenerConfiguracionLineas();
@@ -1102,7 +1277,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     : canvas.width * configuracion.lineaC;
 
                 // --------------------------------------
-                // 6. REGISTRAR CRUCES
+                // 7. REGISTRAR CRUCES
+                // Usando tiempoFrame (capturado ANTES de la
+                // inferencia ONNX) para que el timestamp
+                // corresponda al frame realmente analizado.
                 // --------------------------------------
 
                 registrarCruces(
@@ -1110,12 +1288,95 @@ document.addEventListener("DOMContentLoaded", () => {
                     lineaA,
                     lineaB,
                     lineaC,
-                    video.currentTime,
+                    tiempoFrame,
                     configuracion.orientacion
                 );
 
                 // --------------------------------------
-                // 7. CALCULAR VELOCIDADES
+                // 7b. REGISTRAR HISTORIAL BBOX Y CALCULAR
+                //     VELOCIDAD POR PERSPECTIVA
+                // Se ejecuta en cada frame para mantener
+                // una estimación continua de velocidad
+                // independiente del cruce de líneas.
+                // --------------------------------------
+
+                const metodo      = metodoVelocidadInput.value;
+                const factorEscala = Number(factorEscalaInput.value);
+
+                vehiculos.forEach(vehiculo => {
+
+                    if (
+                        vehiculo.fotogramasPerdidos !== 0 ||
+                        vehiculo.hits < 2
+                    ) return;
+
+                    // Actualizar historial de tamaño del bbox.
+                    registrarMuestraBbox(
+                        vehiculo,
+                        vehiculo.deteccion,
+                        tiempoFrame
+                    );
+
+                    // Calcular velocidad por perspectiva si
+                    // el método seleccionado lo incluye.
+                    if (
+                        metodo === "perspectiva" ||
+                        metodo === "ambos"
+                    ) {
+
+                        const resultadoPerspectiva =
+                            calcularVelocidadPerspectiva(
+                                vehiculo,
+                                factorEscala
+                            );
+
+                        if (resultadoPerspectiva) {
+
+                            // Si ya tenemos velocidad por líneas,
+                            // solo actualizar si no estaba calculada.
+                            const yaCalculadaPorLineas =
+                                vehiculo.velocidades?.metodo === "lineas";
+
+                            if (!yaCalculadaPorLineas) {
+
+                                vehiculo.velocidades = resultadoPerspectiva;
+
+                                // Actualizar la tabla en cada frame
+                                // para mostrar la velocidad en tiempo real.
+                                actualizarTablaVehiculos(
+                                    vehiculo,
+                                    resultadoPerspectiva.velocidad
+                                );
+
+                                if (
+                                    resultadoPerspectiva.velocidad >
+                                    maximoRegistrado
+                                ) {
+                                    maximoRegistrado =
+                                        resultadoPerspectiva.velocidad;
+
+                                    velocidadMaxima.innerHTML =
+                                        `${maximoRegistrado.toFixed(2)} ` +
+                                        `<small>km/h</small>`;
+                                }
+
+                                // Evaluar infracción con la velocidad
+                                // más alta registrada para este vehículo.
+                                registrarInfraccionPerspectiva(
+                                    vehiculo,
+                                    resultadoPerspectiva.velocidad
+                                );
+
+                            }
+
+                        }
+
+                    }
+
+                });
+
+                // --------------------------------------
+                // 8. CALCULAR VELOCIDADES (TRES LÍNEAS)
                 // --------------------------------------
 
                 vehiculos.forEach(vehiculo => {
@@ -1123,7 +1384,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
 
                 // --------------------------------------
-                // 8. DETECTAR Y LEER MATRÍCULAS
+                // 9. DETECTAR Y LEER MATRÍCULAS
                 // --------------------------------------
 
                 // Se aplica a TODOS los vehículos seguidos.
@@ -1131,13 +1392,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 procesarOCR(vehiculos);
 
                 // --------------------------------------
-                // 9. DIBUJAR SEGUIMIENTO Y MATRÍCULAS
+                // 10. DIBUJAR SEGUIMIENTO Y MATRÍCULAS
                 // --------------------------------------
 
                 dibujarSeguimiento(vehiculos);
 
                 // --------------------------------------
-                // 10. ACTUALIZAR CONTADOR
+                // 11. ACTUALIZAR CONTADOR
                 // --------------------------------------
 
                 const cantidad = vehiculos.filter(
@@ -1213,6 +1474,7 @@ document.addEventListener("DOMContentLoaded", () => {
             procesando = true;
 
             ultimaDeteccion = 0;
+            tiempoFrameAnterior = 0;
 
             mostrarVideo();
 

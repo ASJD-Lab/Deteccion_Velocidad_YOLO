@@ -328,6 +328,52 @@
                 <div class="setting-divider"></div>
 
 
+                <div class="setting-group">
+
+                    <label for="metodoVelocidad">
+                        Método de velocidad
+                    </label>
+
+                    <select
+                        id="metodoVelocidad"
+                        style="width:100%; padding:12px; background:#0b1120; color:white; border:1px solid #334155; border-radius:7px;"
+                    >
+                        <option value="ambos">Ambos (líneas + perspectiva)</option>
+                        <option value="lineas">Solo tres líneas</option>
+                        <option value="perspectiva" selected>Solo perspectiva (video trasero)</option>
+                    </select>
+
+                </div>
+
+
+                <div class="setting-group" id="grupoFactorEscala">
+
+                    <label for="factorEscala">
+                        Factor de escala (perspectiva)
+                        <small style="display:block; color:#94a3b8; font-weight:normal; margin-top:2px;">
+                            Ajusta hasta que la velocidad mostrada<br>
+                            coincida con la velocidad real del video.
+                        </small>
+                    </label>
+
+                    <div class="input-with-unit">
+
+                        <input
+                            type="number"
+                            id="factorEscala"
+                            value="0.15"
+                            min="0.01"
+                            max="5"
+                            step="0.01"
+                        >
+
+                        <span>px⁰·⁵/m</span>
+
+                    </div>
+
+                </div>
+
+
                 <div class="model-status">
 
                     <h3>MODELOS DE INTELIGENCIA ARTIFICIAL</h3>
@@ -426,6 +472,7 @@
 
                     <thead>
                         <tr>
+                            <th>IMAGEN PLACA</th>
                             <th>MATRÍCULA</th>
                             <th>VELOCIDAD</th>
                             <th>LÍMITE</th>
@@ -437,7 +484,7 @@
                     <tbody id="tablaMultas">
 
                         <tr>
-                            <td colspan="5" class="empty-message">
+                            <td colspan="6" class="empty-message">
                                 No se han registrado infracciones.
                             </td>
                         </tr>
