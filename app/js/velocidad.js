@@ -160,19 +160,29 @@ function actualizarVelocidadVehiculo(
 // ======================================================
 // 5. CALCULAR VELOCIDAD POR PERSPECTIVA
 //
-// En video grabado por detrás del tráfico los autos se
-// acercan y su bounding box crece. La raíz cuadrada del
-// área es inversamente proporcional a la distancia, por
-// lo que la tasa de cambio de √área es proporcional a la
-// velocidad de acercamiento.
+// Para video grabado por detrás del tráfico (perspectiva
+// central), la relación entre altura del bbox en píxeles
+// y distancia real al vehículo es:
 //
-//   v ≈ (√área_actual - √área_anterior) × factorEscala / Δt
+//   altura_px = K / distancia_m   →   distancia_m = K / altura_px
 //
-// factorEscala convierte px^0.5 en metros. Se calibra en
-// el panel de configuración; valor típico: 0.08 – 0.30.
+// donde K = focal_px × altura_real_m (constante de la cámara).
+//
+// La distancia recorrida entre dos frames es:
+//
+//   Δd = K × (1/h1 - 1/h2)   [metros]
+//   v  = Δd / Δt              [m/s]  × 3.6 → km/h
+//
+// K se llama "constante perspectiva" y el usuario la
+// calibra hasta que la velocidad mostrada coincida con
+// la velocidad real. Valor de partida típico: 500–2000.
+//
+// Se usa la altura del bbox (y2-y1) en lugar del área
+// porque la altura es más estable ante oclusiones
+// parciales donde el ancho puede variar.
 // ======================================================
 
-function calcularVelocidadPerspectiva(vehiculo, factorEscala) {
+function calcularVelocidadPerspectiva(vehiculo, constK) {
 
     if (
         !vehiculo ||
@@ -182,7 +192,7 @@ function calcularVelocidadPerspectiva(vehiculo, factorEscala) {
         return null;
     }
 
-    if (!Number.isFinite(factorEscala) || factorEscala <= 0) {
+    if (!Number.isFinite(constK) || constK <= 0) {
         return null;
     }
 
@@ -193,15 +203,21 @@ function calcularVelocidadPerspectiva(vehiculo, factorEscala) {
     const dt = actual.tiempo - anterior.tiempo;
     if (dt <= 0) return null;
 
-    const ladoAnterior = Math.sqrt(anterior.area);
-    const ladoActual   = Math.sqrt(actual.area);
+    // Usar la altura del bbox, que es el parámetro
+    // más directo en la ecuación de perspectiva.
+    const h1 = anterior.alto;
+    const h2 = actual.alto;
 
-    // Solo calculamos cuando el auto se acerca (bbox crece).
-    if (ladoActual <= ladoAnterior) return null;
+    // Si la altura no creció el auto no se está acercando.
+    if (h2 <= h1 || h1 <= 0) return null;
 
-    const distanciaAprox = (ladoActual - ladoAnterior) * factorEscala;
+    // Distancia recorrida según la ecuación perspectiva:
+    //   Δd = K × (1/h1 - 1/h2)
+    const deltaDistancia = constK * (1 / h1 - 1 / h2);
 
-    const velocidad = calcularVelocidad(distanciaAprox, dt);
+    if (deltaDistancia <= 0) return null;
+
+    const velocidad = calcularVelocidad(deltaDistancia, dt);
 
     if (!Number.isFinite(velocidad)) return null;
 
@@ -218,6 +234,8 @@ function calcularVelocidadPerspectiva(vehiculo, factorEscala) {
 
 // ======================================================
 // 6. REGISTRAR MUESTRA EN EL HISTORIAL DEL BBOX
+// Se guarda tanto el área como el alto del bbox para
+// que la fórmula de perspectiva tenga acceso al alto.
 // ======================================================
 
 function registrarMuestraBbox(vehiculo, deteccion, tiempo) {
@@ -228,13 +246,12 @@ function registrarMuestraBbox(vehiculo, deteccion, tiempo) {
         vehiculo.historialBbox = [];
     }
 
-    const area =
-        (deteccion.x2 - deteccion.x1) *
-        (deteccion.y2 - deteccion.y1);
+    const alto = deteccion.y2 - deteccion.y1;
+    const area = (deteccion.x2 - deteccion.x1) * alto;
 
-    if (area <= 0) return;
+    if (area <= 0 || alto <= 0) return;
 
-    vehiculo.historialBbox.push({ area, tiempo });
+    vehiculo.historialBbox.push({ area, alto, tiempo });
 
     if (vehiculo.historialBbox.length > HISTORIAL_BBOX_MAX) {
         vehiculo.historialBbox.shift();

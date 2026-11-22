@@ -349,10 +349,12 @@
                 <div class="setting-group" id="grupoFactorEscala">
 
                     <label for="factorEscala">
-                        Factor de escala (perspectiva)
+                        Constante K (perspectiva)
                         <small style="display:block; color:#94a3b8; font-weight:normal; margin-top:2px;">
-                            Ajusta hasta que la velocidad mostrada<br>
-                            coincida con la velocidad real del video.
+                            K = distancia_focal × altura_real_auto.<br>
+                            Sube K si la velocidad se muestra baja;<br>
+                            bájala si se muestra alta.<br>
+                            Rango típico: 500 – 2000.
                         </small>
                     </label>
 
@@ -361,13 +363,13 @@
                         <input
                             type="number"
                             id="factorEscala"
-                            value="0.15"
-                            min="0.01"
-                            max="5"
-                            step="0.01"
+                            value="800"
+                            min="10"
+                            max="9999"
+                            step="50"
                         >
 
-                        <span>px⁰·⁵/m</span>
+                        <span>px·m</span>
 
                     </div>
 
