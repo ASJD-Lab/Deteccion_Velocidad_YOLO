@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Vigilancia Vial | Sistema de Monitoreo</title>
+
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- ONNX Runtime Web -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+</head>
+
+<body>
+
+    <div class="app-container">
+
+        <!-- ENCABEZADO -->
+        <header class="header">
+
+            <div class="brand">
+                <div class="brand-icon">🚦</div>
+
+                <div>
+                    <h1>VIGILANCIA VIAL</h1>
+                    <p>Sistema inteligente de monitoreo vehicular</p>
+                </div>
+            </div>
+
+            <div class="system-status">
+                <span class="status-indicator"></span>
+                <span>SISTEMA EN ESPERA</span>
+            </div>
+
+        </header>
+
+
+        <!-- INDICADORES -->
+        <section class="metrics-grid">
+
+            <div class="metric-card">
+                <span class="metric-label">VEHÍCULOS DETECTADOS</span>
+                <h2 id="totalVehiculos">0</h2>
+                <span class="metric-description">Total de vehículos</span>
+            </div>
+
+            <div class="metric-card">
+                <span class="metric-label">INFRACCIONES</span>
+                <h2 id="totalInfracciones">0</h2>
+                <span class="metric-description">Excesos registrados</span>
+            </div>
+
+            <div class="metric-card">
+                <span class="metric-label">VELOCIDAD MÁXIMA</span>
+                <h2 id="velocidadMaxima">0 <small>km/h</small></h2>
+                <span class="metric-description">Velocidad registrada</span>
+            </div>
+
+            <div class="metric-card">
+                <span class="metric-label">LÍMITE PERMITIDO</span>
+                <h2 id="limiteActual">60 <small>km/h</small></h2>
+                <span class="metric-description">Configuración actual</span>
+            </div>
+
+        </section>
+
+
+        <!-- CONTENIDO PRINCIPAL -->
+        <main class="main-grid">
+
+            <!-- PANEL DE VIDEO -->
+            <section class="panel video-panel">
+
+                <div class="panel-header">
+
+                    <div>
+                        <h2>MONITOREO EN TIEMPO REAL</h2>
+                        <p>Visualización y detección de matrículas</p>
+                    </div>
+
+                    <span class="live-badge">● LIVE</span>
+
+                </div>
+
+
+                <div class="video-container" id="videoContainer">
+
+                    <div class="video-placeholder" id="videoPlaceholder">
+
+                        <div class="camera-icon">📹</div>
+
+                        <h3>Sin fuente de video</h3>
+
+                        <p>
+                            Activa la cámara o selecciona un video
+                            para comenzar el monitoreo.
+                        </p>
+
+                    </div>
+
+                    <video id="video" autoplay muted playsinline></video>
+
+                    <canvas id="canvas"></canvas>
+
+                </div>
+
+
+                <div class="video-controls">
+
+                    <button id="btnCamara" class="btn btn-primary">
+                        Activar cámara
+                    </button>
+
+                    <label for="inputVideo" class="btn btn-secondary">
+                        Cargar video
+                    </label>
+
+                    <input
+                        type="file"
+                        id="inputVideo"
+                        accept="video/*"
+                        hidden
+                    >
+
+                    <button id="btnDetener" class="btn btn-danger">
+                        Detener
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <!-- CONFIGURACIÓN -->
+            <aside class="panel settings-panel">
+
+                <div class="panel-header">
+                    <div>
+                        <h2>CONFIGURACIÓN</h2>
+                        <p>Parámetros de vigilancia</p>
+                    </div>
+                </div>
+
+
+                <div class="setting-group">
+
+                    <label for="limiteVelocidad">
+                        Límite de velocidad
+                    </label>
+
+                    <div class="input-with-unit">
+
+                        <input
+                            type="number"
+                            id="limiteVelocidad"
+                            value="60"
+                            min="1"
+                        >
+
+                        <span>km/h</span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="setting-group">
+
+                    <label for="distanciaLineas">
+                        Distancia entre líneas
+                    </label>
+
+                    <div class="input-with-unit">
+
+                        <input
+                            type="number"
+                            id="distanciaLineas"
+                            value="10"
+                            min="0.1"
+                            step="0.1"
+                        >
+
+                        <span>metros</span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="setting-group">
+
+                    <label for="confianza">
+                        Confianza del detector
+                    </label>
+
+                    <div class="input-with-unit">
+
+                        <input
+                            type="number"
+                            id="confianza"
+                            value="0.40"
+                            min="0.01"
+                            max="1"
+                            step="0.05"
+                        >
+
+                    </div>
+
+                </div>
+
+
+                <div class="setting-divider"></div>
+
+
+                <div class="model-status">
+
+                    <h3>MODELO DE INTELIGENCIA ARTIFICIAL</h3>
+
+                    <div class="model-info">
+                        <span>Modelo</span>
+                        <strong>YOLOv8 ONNX</strong>
+                    </div>
+
+                    <div class="model-info">
+                        <span>Formato</span>
+                        <strong>ONNX</strong>
+                    </div>
+
+                    <div class="model-info">
+                        <span>Entrada</span>
+                        <strong>640 × 640</strong>
+                    </div>
+
+                    <div class="model-info">
+                        <span>Estado</span>
+                        <strong id="estadoModelo">Pendiente</strong>
+                    </div>
+
+                </div>
+
+            </aside>
+
+        </main>
+
+
+        <!-- TABLA DE VEHÍCULOS -->
+        <section class="panel table-panel">
+
+            <div class="panel-header">
+
+                <div>
+                    <h2>VEHÍCULOS DETECTADOS</h2>
+                    <p>Registro de matrículas y velocidades</p>
+                </div>
+
+            </div>
+
+
+            <div class="table-responsive">
+
+                <table>
+
+                    <thead>
+                        <tr>
+                            <th>MATRÍCULA</th>
+                            <th>VELOCIDAD</th>
+                            <th>ESTADO</th>
+                            <th>HORA</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="tablaVehiculos">
+
+                        <tr>
+                            <td colspan="4" class="empty-message">
+                                No hay vehículos registrados.
+                            </td>
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+
+        <!-- REGISTRO DE INFRACCIONES -->
+        <section class="panel table-panel">
+
+            <div class="panel-header">
+
+                <div>
+                    <h2>REGISTRO DE INFRACCIONES</h2>
+                    <p>Historial de excesos de velocidad</p>
+                </div>
+
+            </div>
+
+
+            <div class="table-responsive">
+
+                <table>
+
+                    <thead>
+                        <tr>
+                            <th>MATRÍCULA</th>
+                            <th>VELOCIDAD</th>
+                            <th>LÍMITE</th>
+                            <th>EXCESO</th>
+                            <th>FECHA Y HORA</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="tablaMultas">
+
+                        <tr>
+                            <td colspan="5" class="empty-message">
+                                No se han registrado infracciones.
+                            </td>
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+
+        <footer class="footer">
+
+            <p>
+                SISTEMA ACADÉMICO DE DETECCIÓN Y MONITOREO VEHICULAR
+            </p>
+
+            <p>
+                YOLOv8 · ONNX Runtime Web · JavaScript
+            </p>
+
+        </footer>
+
+    </div>
+
+    <!-- JAVASCRIPT -->
+    <script src="js/detector.js"></script>
+    <script src="js/velocidad.js"></script>
+    <script src="js/multas.js"></script>
+    <script src="js/app.js"></script>
+
+</body>
+
+</html>
