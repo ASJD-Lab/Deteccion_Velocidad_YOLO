@@ -9,8 +9,11 @@
 
     <link rel="stylesheet" href="styles.css">
 
-    <!-- ONNX Runtime Web -->
+    <!-- ONNX Runtime Web: ejecución de los modelos YOLO -->
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+
+    <!-- Tesseract.js: reconocimiento óptico de caracteres (OCR) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 
 <body>
@@ -77,7 +80,7 @@
 
                     <div>
                         <h2>MONITOREO EN TIEMPO REAL</h2>
-                        <p>Visualización y detección de matrículas</p>
+                        <p>Detección de vehículos y reconocimiento de matrículas</p>
                     </div>
 
                     <span class="live-badge">● LIVE</span>
@@ -168,16 +171,39 @@
 
                 <div class="setting-group">
 
-                    <label for="distanciaLineas">
-                        Distancia entre líneas
+                    <label for="distanciaAB">
+                        Distancia entre líneas A y B
                     </label>
 
                     <div class="input-with-unit">
 
                         <input
                             type="number"
-                            id="distanciaLineas"
-                            value="10"
+                            id="distanciaAB"
+                            value="5"
+                            min="0.1"
+                            step="0.1"
+                        >
+
+                        <span>metros</span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="setting-group">
+
+                    <label for="distanciaBC">
+                        Distancia entre líneas B y C
+                    </label>
+
+                    <div class="input-with-unit">
+
+                        <input
+                            type="number"
+                            id="distanciaBC"
+                            value="5"
                             min="0.1"
                             step="0.1"
                         >
@@ -200,7 +226,7 @@
                         <input
                             type="number"
                             id="confianza"
-                            value="0.40"
+                            value="0.50"
                             min="0.01"
                             max="1"
                             step="0.05"
@@ -211,25 +237,118 @@
                 </div>
 
 
+                <div class="setting-group">
+
+                    <label for="lineaA">
+                        Posición de línea A
+                    </label>
+
+                    <div class="input-with-unit">
+
+                        <input
+                            type="range"
+                            id="lineaA"
+                            min="10"
+                            max="80"
+                            value="35"
+                        >
+
+                        <span id="valorLineaA">35%</span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="setting-group">
+
+                    <label for="lineaB">
+                        Posición de línea B
+                    </label>
+
+                    <div class="input-with-unit">
+
+                        <input
+                            type="range"
+                            id="lineaB"
+                            min="15"
+                            max="90"
+                            value="50"
+                        >
+
+                        <span id="valorLineaB">50%</span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="setting-group">
+
+                    <label for="lineaC">
+                        Posición de línea C
+                    </label>
+
+                    <div class="input-with-unit">
+
+                        <input
+                            type="range"
+                            id="lineaC"
+                            min="20"
+                            max="95"
+                            value="65"
+                        >
+
+                        <span id="valorLineaC">65%</span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="setting-group">
+
+                    <label for="orientacionLineas">
+                        Orientación de las líneas
+                    </label>
+
+                    <select
+                        id="orientacionLineas"
+                        style="width:100%; padding:12px; background:#0b1120; color:white; border:1px solid #334155; border-radius:7px;"
+                    >
+
+                        <option value="horizontal">Horizontales</option>
+                        <option value="vertical">Verticales</option>
+
+                    </select>
+
+                </div>
+
+
                 <div class="setting-divider"></div>
 
 
                 <div class="model-status">
 
-                    <h3>MODELO DE INTELIGENCIA ARTIFICIAL</h3>
+                    <h3>MODELOS DE INTELIGENCIA ARTIFICIAL</h3>
 
                     <div class="model-info">
-                        <span>Modelo</span>
-                        <strong>YOLOv8 ONNX</strong>
+                        <span>Detección de vehículos</span>
+                        <strong>vehiculos.onnx</strong>
                     </div>
 
                     <div class="model-info">
-                        <span>Formato</span>
-                        <strong>ONNX</strong>
+                        <span>Detección de matrículas</span>
+                        <strong>best.onnx</strong>
                     </div>
 
                     <div class="model-info">
-                        <span>Entrada</span>
+                        <span>Reconocimiento de texto</span>
+                        <strong>Tesseract OCR</strong>
+                    </div>
+
+                    <div class="model-info">
+                        <span>Entrada de modelos</span>
                         <strong>640 × 640</strong>
                     </div>
 
@@ -339,17 +458,26 @@
             </p>
 
             <p>
-                YOLOv8 · ONNX Runtime Web · JavaScript
+                YOLOv8 · ONNX Runtime Web · Tesseract OCR · JavaScript
             </p>
 
         </footer>
 
     </div>
 
+
     <!-- JAVASCRIPT -->
+
     <script src="js/detector.js"></script>
+    <script src="js/seguimiento.js"></script>
     <script src="js/velocidad.js"></script>
     <script src="js/multas.js"></script>
+    <script src="js/vehiculos.js"></script>
+
+    <!-- Nuevo módulo OCR -->
+    <script src="js/ocr.js"></script>
+
+    <!-- Archivo principal: siempre al final -->
     <script src="js/app.js"></script>
 
 </body>
