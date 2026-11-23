@@ -570,12 +570,13 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log("[OCR recorte crudo] →", canvasPlacaOCR.toDataURL());
 
         // Aplicar reconocimiento OCR.
-        let resultadoOCR = await leerMatriculaONNX(canvasPlacaOCR);
+        // Usar Tesseract como principal (con preprocesamiento mejorado).
+        let resultadoOCR = await leerMatricula(canvasPlacaOCR);
 
-        // Fallback a Tesseract si ONNX no devuelve resultado.
+        // Fallback a ONNX si Tesseract no devuelve resultado.
         if (!resultadoOCR || !resultadoOCR.texto) {
-            console.log("[OCR] Fallback a Tesseract");
-            resultadoOCR = await leerMatricula(canvasPlacaOCR);
+            console.log("[OCR] Fallback a ONNX");
+            resultadoOCR = await leerMatriculaONNX(canvasPlacaOCR);
         }
 
         if (sesionActual !== sesionVideo) return;
