@@ -93,9 +93,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let ocrProcesando = false;
     let ultimoIntentoOCR = 0;
 
-    const INTERVALO_OCR = 500;
-    const CONFIANZA_PLACA = 0.10;
-    const MAX_INTENTOS_OCR = 10;
+    const INTERVALO_OCR = 400;
+    const CONFIANZA_PLACA = 0.15;
+    const MAX_INTENTOS_OCR = 15;
 
     // Identifica cada reproducción.
     let sesionVideo = 0;
@@ -495,15 +495,35 @@ document.addEventListener("DOMContentLoaded", () => {
 
         }
 
+        // Filtrar placas muy pequeñas (menos de 60×20 px).
+        const placasValidas = placas.filter(p => {
+            const w = p.x2 - p.x1;
+            const h = p.y2 - p.y1;
+            return w >= 60 && h >= 20;
+        });
+
+        if (placasValidas.length === 0) {
+            console.log(`Vehículo ${vehiculo.id}: placas detectadas pero muy pequeñas.`);
+            return;
+        }
+
         // Seleccionar la placa con mayor confianza.
-        placas.sort(
+        placasValidas.sort(
             (a, b) => b.confianza - a.confianza
         );
 
-        const placa = placas[0];
+        const placa = placasValidas[0];
 
         const placaAncho = placa.x2 - placa.x1;
         const placaAlto = placa.y2 - placa.y1;
+
+        // Resetear intentos si la placa se ve mejor que antes.
+        const tamanoActual = placaAncho * placaAlto;
+        if (!vehiculo.mejorTamanoPlaca || tamanoActual > vehiculo.mejorTamanoPlaca * 1.2) {
+            vehiculo.mejorTamanoPlaca = tamanoActual;
+            vehiculo.ocrIntentos = Math.max(0, (vehiculo.ocrIntentos || 0) - 2);
+            console.log(`Vehículo ${vehiculo.id}: placa mejor (${tamanoActual}px²), reseteando intentos.`);
+        }
 
         if (placaAncho < 5 || placaAlto < 5) return;
 
