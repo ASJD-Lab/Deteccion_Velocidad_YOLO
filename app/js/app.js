@@ -525,8 +525,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Reutilizar canvas preallocado para evitar
         // crear un nuevo elemento DOM en cada intento OCR.
-        canvasPlacaOCR.width  = Math.max(1, Math.ceil(srcAncho));
-        canvasPlacaOCR.height = Math.max(1, Math.ceil(srcAlto));
+        canvasPlacaOCR.width  = Math.max(1, Math.ceil(srcAncho * 2));
+        canvasPlacaOCR.height = Math.max(1, Math.ceil(srcAlto * 2));
 
         // Recortar desde la captura mejorada del vehículo (con padding).
         ctxPlacaOCR.drawImage(
