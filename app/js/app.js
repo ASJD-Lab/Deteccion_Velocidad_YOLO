@@ -553,7 +553,7 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log("[OCR recorte crudo] →", canvasPlacaOCR.toDataURL());
 
         // Aplicar reconocimiento OCR.
-        const resultadoOCR = await leerMatricula(canvasPlacaOCR);
+        const resultadoOCR = await leerMatriculaONNX(canvasPlacaOCR);
 
         if (sesionActual !== sesionVideo) return;
 
@@ -1824,7 +1824,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 cargarModeloVehiculos(),
 
-                inicializarOCR()
+                inicializarOCR(),
+
+                cargarModeloOCR()
 
             ]);
 

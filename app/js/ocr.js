@@ -1,8 +1,15 @@
 // ======================================================
 // MÓDULO OCR
 // RECONOCIMIENTO DE CARACTERES DE MATRÍCULAS
-// Tesseract.js
+// Tesseract.js + ONNX (cct_s_v2_global)
 // ======================================================
+
+// Modelo ONNX de OCR de placas (entrada [1,64,128,3]).
+let modeloOCR = null;
+
+// Alfabeto del modelo cct_s: 0-9, A-Z + blank (índice 36).
+const ALFABETO_OCR = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const BLANK_IDX = 36;
 
 // Los volcados de imagen en consola (toDataURL) son útiles
 // para depurar, pero cuestan tiempo y memoria en cada intento.
@@ -426,6 +433,124 @@ async function leerMatricula(imagen) {
             identificada: false
 
         };
+
+    }
+
+}
+
+// ======================================================
+// 6. CARGAR MODELO ONNX DE OCR (cct_s_v2_global)
+// ======================================================
+
+async function cargarModeloOCR() {
+
+    if (modeloOCR) return true;
+
+    try {
+
+        console.log("Cargando modelo OCR ONNX...");
+
+        const respuesta = await fetch("../modelos/cct_s_v2_global.onnx");
+        if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+
+        const buffer = await respuesta.arrayBuffer();
+        modeloOCR = await SesionONNX.crear(buffer, {
+            tamanoEntrada: 128,
+            etiqueta: "OCR ONNX"
+        });
+
+        console.log("Modelo OCR ONNX cargado.", modeloOCR.inputNames, modeloOCR.outputNames);
+
+        return true;
+
+    } catch (error) {
+
+        console.error("No se pudo cargar el modelo OCR ONNX:", error);
+        modeloOCR = null;
+        return false;
+
+    }
+
+}
+
+
+// ======================================================
+// 7. LEER MATRÍCULA CON ONNX
+// ======================================================
+
+async function leerMatriculaONNX(imagen) {
+
+    if (!modeloOCR) {
+        const ok = await cargarModeloOCR();
+        if (!ok) {
+            return { texto: "", confianza: 0, identificada: false };
+        }
+    }
+
+    try {
+
+        const anchoObj = 128;
+        const altoObj = 64;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = anchoObj;
+        canvas.height = altoObj;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(imagen, 0, 0, anchoObj, altoObj);
+
+        const datos = ctx.getImageData(0, 0, anchoObj, altoObj).data;
+        const tensor = new Float32Array(1 * altoObj * anchoObj * 3);
+
+        for (let i = 0; i < altoObj * anchoObj; i++) {
+            const p = i * 4;
+            tensor[i * 3]     = datos[p] / 255;
+            tensor[i * 3 + 1] = datos[p + 1] / 255;
+            tensor[i * 3 + 2] = datos[p + 2] / 255;
+        }
+
+        const salida = await modeloOCR.run(tensor, [1, altoObj, anchoObj, 3]);
+
+        const logits = salida;
+        const numT = 10;
+        const numC = 37;
+        let texto = "";
+        let confianzaTotal = 0;
+        let prevIdx = -1;
+
+        for (let t = 0; t < numT; t++) {
+            let maxIdx = 0;
+            let maxVal = -Infinity;
+            for (let c = 0; c < numC; c++) {
+                const val = logits[t * numC + c];
+                if (val > maxVal) {
+                    maxVal = val;
+                    maxIdx = c;
+                }
+            }
+            if (maxIdx !== BLANK_IDX && maxIdx !== prevIdx) {
+                texto += ALFABETO_OCR[maxIdx];
+                confianzaTotal += maxVal;
+            }
+            prevIdx = maxIdx;
+        }
+
+        const confianza = numT > 0 ? (confianzaTotal / numT) * 100 : 0;
+        const textoNorm = normalizarMatricula(texto);
+        const identificada = esPlacaMexicana(textoNorm) && confianza >= 10;
+
+        console.log("Resultado OCR ONNX:", { texto: textoNorm, confianza, identificada });
+
+        return {
+            texto: identificada ? textoNorm : "",
+            textoOriginal: texto,
+            confianza,
+            identificada
+        };
+
+    } catch (error) {
+
+        console.error("Error OCR ONNX:", error);
+        return { texto: "", confianza: 0, identificada: false };
 
     }
 
