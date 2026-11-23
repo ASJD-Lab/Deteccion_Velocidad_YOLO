@@ -450,6 +450,7 @@ async function cargarModeloOCR() {
 
         console.log("Cargando modelo OCR ONNX...");
 
+        console.log("[OCR ONNX] fetch ../modelos/cct_s_v2_global.onnx");
         const respuesta = await fetch("../modelos/cct_s_v2_global.onnx");
         if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
 
@@ -479,6 +480,8 @@ async function cargarModeloOCR() {
 // ======================================================
 
 async function leerMatriculaONNX(imagen) {
+
+    console.log("[OCR ONNX] leerMatriculaONNX llamada");
 
     if (!modeloOCR) {
         const ok = await cargarModeloOCR();
