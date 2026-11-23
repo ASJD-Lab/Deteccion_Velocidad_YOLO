@@ -518,8 +518,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const srcX = Math.max(0, placa.x1 - padH);
         const srcY = Math.max(0, placa.y1 - padV);
-        const srcX2 = Math.min(recorte.ancho, placa.x2 + padH);
-        const srcY2 = Math.min(recorte.alto, placa.y2 + padV);
+        const srcX2 = Math.min(recorteMejorado.width, placa.x2 + padH);
+        const srcY2 = Math.min(recorteMejorado.height, placa.y2 + padV);
         const srcAncho = srcX2 - srcX;
         const srcAlto  = srcY2 - srcY;
 
