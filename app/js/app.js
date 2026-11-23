@@ -94,7 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let ultimoIntentoOCR = 0;
 
     const INTERVALO_OCR = 300;
-    const CONFIANZA_PLACA = 0.15;
+    const CONFIANZA_PLACA = 0.10;
     const MAX_INTENTOS_OCR = 20;
 
     // Identifica cada reproducción.
@@ -495,11 +495,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         }
 
-        // Filtrar placas muy pequeñas (menos de 80×25 px).
+        // Filtrar placas muy pequeñas (menos de 20×8 px).
         const placasValidas = placas.filter(p => {
             const w = p.x2 - p.x1;
             const h = p.y2 - p.y1;
-            return w >= 80 && h >= 25;
+            return w >= 20 && h >= 8;
         });
 
         if (placasValidas.length === 0) {
