@@ -204,8 +204,8 @@ function prepararImagenOCR(imagen) {
         return null;
     }
 
-    // Escalar 4× para mejorar la legibilidad.
-    const escala = 4;
+    // Escalar 2× para mejorar la legibilidad.
+    const escala = 2;
 
     const ancho = Math.round(anchoOriginal * escala);
     const alto = Math.round(altoOriginal * escala);
@@ -234,7 +234,7 @@ function prepararImagenOCR(imagen) {
         datos.data[i + 2] = gris;
     }
 
-    // Escala de grises.
+    // Solo escala de grises (sin binarización).
     for (let i = 0; i < datos.data.length; i += 4) {
         const gris = Math.round(
             0.299 * datos.data[i] +
@@ -244,17 +244,6 @@ function prepararImagenOCR(imagen) {
         datos.data[i]     = gris;
         datos.data[i + 1] = gris;
         datos.data[i + 2] = gris;
-    }
-
-    // Binarización con Otsu.
-    const umbral = calcularUmbralOtsu(datos.data, datos.data.length);
-    const umbralFinal = (umbral < 30 || umbral > 220) ? 128 : umbral;
-
-    for (let i = 0; i < datos.data.length; i += 4) {
-        const valor = datos.data[i] > umbralFinal ? 255 : 0;
-        datos.data[i]     = valor;
-        datos.data[i + 1] = valor;
-        datos.data[i + 2] = valor;
     }
 
     ctx.putImageData(datos, 0, 0);
