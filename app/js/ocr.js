@@ -204,8 +204,8 @@ function prepararImagenOCR(imagen) {
         return null;
     }
 
-    // Escalar 2× para mejorar la legibilidad.
-    const escala = 2;
+    // Sin escalado (1×).
+    const escala = 1;
 
     const ancho = Math.round(anchoOriginal * escala);
     const alto = Math.round(altoOriginal * escala);

@@ -521,15 +521,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         }
 
-        // Filtrar placas muy pequeñas (< 40×15 px).
-        const placasValidas = placas.filter(p => {
-            const w = p.x2 - p.x1;
-            const h = p.y2 - p.y1;
-            return w >= 40 && h >= 15;
-        });
+        // Aceptar todas las placas detectadas.
+        const placasValidas = placas;
 
         if (placasValidas.length === 0) {
-            console.log(`Vehículo ${vehiculo.id}: placas detectadas pero muy pequeñas.`);
+            console.log(`Vehículo ${vehiculo.id}: no se encontró matrícula.`);
             return;
         }
 
@@ -539,16 +535,6 @@ document.addEventListener("DOMContentLoaded", () => {
         );
 
         const placa = placasValidas[0];
-
-        // Calcular nitidez del recorte de la placa.
-        const nitidez = calcularNitidezCanvas(canvasPlacaOCR);
-        if (!vehiculo.mejorNitidez || nitidez > vehiculo.mejorNitidez * 1.1) {
-            vehiculo.mejorNitidez = nitidez;
-        } else {
-            // Saltar si el recorte no es más nítido.
-            console.log(`Vehículo ${vehiculo.id}: recorte menos nítido, saltando.`);
-            return;
-        }
 
         const placaAncho = placa.x2 - placa.x1;
         const placaAlto = placa.y2 - placa.y1;
