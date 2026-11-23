@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="styles.css">
 
     <!-- ONNX Runtime Web: ejecución de los modelos YOLO -->
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 
     <!-- Tesseract.js: reconocimiento óptico de caracteres (OCR) -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -180,7 +180,7 @@
                         <input
                             type="number"
                             id="distanciaAB"
-                            value="5"
+                            value="12"
                             min="0.1"
                             step="0.1"
                         >
@@ -192,7 +192,8 @@
                 </div>
 
 
-                <div class="setting-group">
+                <!-- Oculto: Fase 2 usa solo 2 líneas (A y B) -->
+                <div class="setting-group" style="display:none;">
 
                     <label for="distanciaBC">
                         Distancia entre líneas B y C
@@ -250,10 +251,10 @@
                             id="lineaA"
                             min="10"
                             max="80"
-                            value="35"
+                            value="56"
                         >
-
-                        <span id="valorLineaA">35%</span>
+                        
+                        <span id="valorLineaA">56%</span>
 
                     </div>
 
@@ -273,17 +274,18 @@
                             id="lineaB"
                             min="15"
                             max="90"
-                            value="50"
+                            value="80"
                         >
-
-                        <span id="valorLineaB">50%</span>
+                        
+                        <span id="valorLineaB">80%</span>
 
                     </div>
 
                 </div>
 
 
-                <div class="setting-group">
+                <!-- Oculto: Fase 2 usa solo 2 líneas (A y B) -->
+                <div class="setting-group" style="display:none;">
 
                     <label for="lineaC">
                         Posición de línea C
@@ -340,7 +342,7 @@
                     >
                         <option value="ambos">Ambos (líneas + perspectiva)</option>
                         <option value="lineas">Solo tres líneas</option>
-                        <option value="perspectiva" selected>Solo perspectiva (video trasero)</option>
+                        <option value="radar" selected>Radar 2 líneas + continua</option>
                     </select>
 
                 </div>
@@ -398,6 +400,16 @@
                     <div class="model-info">
                         <span>Entrada de modelos</span>
                         <strong>640 × 640</strong>
+                    </div>
+
+                    <div class="model-info">
+                        <span>Procesador ONNX</span>
+                        <strong id="procesadorONNX">—</strong>
+                    </div>
+
+                    <div class="model-info">
+                        <span>Detección (FPS · ms)</span>
+                        <strong id="fpsDeteccion">—</strong>
                     </div>
 
                     <div class="model-info">
@@ -507,7 +519,8 @@
             </p>
 
             <p>
-                YOLOv8 · ONNX Runtime Web · Tesseract OCR · JavaScript
+                YOLOv8 · ONNX Runtime Web (WebGPU/WASM) ·
+                Tesseract OCR · JavaScript
             </p>
 
         </footer>
@@ -516,6 +529,9 @@
 
 
     <!-- JAVASCRIPT -->
+
+    <!-- Cliente de sesiones ONNX (workers + WebGPU/WASM) -->
+    <script src="js/onnx.js"></script>
 
     <script src="js/detector.js"></script>
     <script src="js/seguimiento.js"></script>

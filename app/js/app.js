@@ -47,6 +47,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const estadoModelo = document.getElementById("estadoModelo");
 
+    const procesadorONNX = document.getElementById("procesadorONNX");
+
+    const fpsDeteccion = document.getElementById("fpsDeteccion");
+
     const metodoVelocidadInput = document.getElementById("metodoVelocidad");
     const factorEscalaInput    = document.getElementById("factorEscala");
 
@@ -64,7 +68,16 @@ document.addEventListener("DOMContentLoaded", () => {
     let ultimaDeteccion = 0;
     let bucleRAF = null;
 
-    const INTERVALO_DETECCION = 100;
+    // Con la inferencia en worker el límite real lo pone el
+    // modelo. Esta compuerta evita encolar más de una
+    // detección a la vez y deja respirar al navegador.
+    const INTERVALO_DETECCION = 70;
+
+    // Medición de rendimiento (se actualiza una vez por segundo).
+    let fpsContador = 0;
+    let fpsInicio = performance.now();
+    let msInferenciaAcumulado = 0;
+    let msInferenciaMuestras = 0;
 
     let maximoRegistrado = 0;
     let infraccionesRegistradas = 0;
@@ -116,7 +129,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return {
             lineaA: Number(lineaAInput.value) / 100,
             lineaB: Number(lineaBInput.value) / 100,
-            lineaC: Number(lineaCInput.value) / 100,
             orientacion: orientacionInput.value
         };
 
@@ -186,6 +198,80 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (estadoModelo) {
             estadoModelo.textContent = mensaje;
+        }
+
+    }
+
+
+    // ==================================================
+    // 6b. MEDIR RENDIMIENTO (FPS Y TIEMPO DE INFERENCIA)
+    // ==================================================
+
+    function actualizarRendimiento() {
+
+        fpsContador++;
+
+        const ahora = performance.now();
+
+        const transcurrido = ahora - fpsInicio;
+
+        if (transcurrido < 1000) return;
+
+        const fps = fpsContador * 1000 / transcurrido;
+
+        const ms = msInferenciaMuestras > 0
+            ? msInferenciaAcumulado / msInferenciaMuestras
+            : 0;
+
+        if (fpsDeteccion) {
+
+            fpsDeteccion.textContent =
+                `${fps.toFixed(1)} FPS · ${ms.toFixed(0)} ms`;
+
+        }
+
+        fpsContador = 0;
+        fpsInicio = ahora;
+        msInferenciaAcumulado = 0;
+        msInferenciaMuestras = 0;
+
+    }
+
+
+    // ==================================================
+    // 6c. MOSTRAR EL PROCESADOR DE LOS MODELOS
+    // ==================================================
+
+    function actualizarProcesador() {
+
+        if (!procesadorONNX) return;
+
+        const epVehiculos = modeloVehiculos?.ep;
+        const epMatriculas = modeloDetector?.ep;
+
+        const usaGPU =
+            epVehiculos === "webgpu" ||
+            epMatriculas === "webgpu";
+
+        const usaCPU =
+            epVehiculos === "wasm" ||
+            epMatriculas === "wasm";
+
+        procesadorONNX.textContent =
+            usaGPU && usaCPU
+                ? "GPU + CPU"
+                : usaGPU
+                    ? "GPU (WebGPU)"
+                    : "CPU (WASM)";
+
+        if (!usaGPU) {
+
+            console.warn(
+                "WebGPU no está disponible. Los modelos usarán " +
+                "WASM y el rendimiento será menor. Prueba con " +
+                "Chrome o Edge actualizados."
+            );
+
         }
 
     }
@@ -1143,6 +1229,15 @@ document.addEventListener("DOMContentLoaded", () => {
         ultimoIntentoOCR = 0;
         tiempoFrameAnterior = 0;
 
+        fpsContador = 0;
+        fpsInicio = performance.now();
+        msInferenciaAcumulado = 0;
+        msInferenciaMuestras = 0;
+
+        if (fpsDeteccion) {
+            fpsDeteccion.textContent = "—";
+        }
+
         actualizarEstado(
             "SISTEMA EN ESPERA",
             "#f59e0b"
@@ -1177,8 +1272,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 // --------------------------------------
                 // 1. CAPTURAR TIEMPO DEL FRAME ACTUAL
                 // Se debe leer ANTES de la inferencia ONNX
-                // porque ésta puede tardar 300–800 ms en WASM,
-                // tiempo durante el cual el video sigue
+                // porque ésta puede tardar decenas o cientos
+                // de ms, tiempo durante el cual el video sigue
                 // avanzando. Usar currentTime post-inferencia
                 // produce tiempos de cruce incorrectos y
                 // velocidades sistemáticamente subestimadas.
@@ -1210,10 +1305,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 // 2. DETECTAR VEHÍCULOS
                 // --------------------------------------
 
+                const inicioInferencia = performance.now();
+
                 const detecciones = await detectarVehiculos(
                     video,
                     confianza
                 );
+
+                msInferenciaAcumulado +=
+                    performance.now() - inicioInferencia;
+
+                msInferenciaMuestras++;
 
                 if (!procesando) return;
 
@@ -1272,22 +1374,14 @@ document.addEventListener("DOMContentLoaded", () => {
                     ? canvas.height * configuracion.lineaB
                     : canvas.width * configuracion.lineaB;
 
-                const lineaC = configuracion.orientacion === "horizontal"
-                    ? canvas.height * configuracion.lineaC
-                    : canvas.width * configuracion.lineaC;
-
                 // --------------------------------------
-                // 7. REGISTRAR CRUCES
-                // Usando tiempoFrame (capturado ANTES de la
-                // inferencia ONNX) para que el timestamp
-                // corresponda al frame realmente analizado.
+                // 7. REGISTRAR CRUCES (ZONA RADAR 2 LÍNEAS)
                 // --------------------------------------
 
                 registrarCruces(
                     vehiculos,
                     lineaA,
                     lineaB,
-                    lineaC,
                     tiempoFrame,
                     configuracion.orientacion
                 );
@@ -1319,56 +1413,63 @@ document.addEventListener("DOMContentLoaded", () => {
 
                     // Calcular velocidad por perspectiva si
                     // el método seleccionado lo incluye.
+                    // Radar (2 líneas) siempre que existan ambos cruces.
+                    const resultadoRadar = actualizarVelocidadVehiculo(
+                        vehiculo,
+                        Number(distanciaRadarInput?.value) || 12.0
+                    );
+
+                    // Estimación continua por regresión/perspectiva.
                     if (
-                        metodo === "perspectiva" ||
-                        metodo === "ambos"
+                        metodo === "continuo" ||
+                        metodo === "ambos" ||
+                        metodo === "radar" ||
+                        metodo === "perspectiva"
                     ) {
 
-                        const resultadoPerspectiva =
-                            calcularVelocidadPerspectiva(
+                        const resultadoContinuo =
+                            calcularVelocidadContinua(
                                 vehiculo,
                                 factorEscala
                             );
 
-                        if (resultadoPerspectiva) {
+                        if (resultadoContinuo) {
+                            actualizarTablaVehiculos(
+                                vehiculo,
+                                resultadoContinuo.velocidad
+                            );
 
-                            // Si ya tenemos velocidad por líneas,
-                            // solo actualizar si no estaba calculada.
-                            const yaCalculadaPorLineas =
-                                vehiculo.velocidades?.metodo === "lineas";
+                            if (
+                                resultadoContinuo.velocidad >
+                                maximoRegistrado
+                            ) {
+                                maximoRegistrado =
+                                    resultadoContinuo.velocidad;
 
-                            if (!yaCalculadaPorLineas) {
-
-                                vehiculo.velocidades = resultadoPerspectiva;
-
-                                // Actualizar la tabla en cada frame
-                                // para mostrar la velocidad en tiempo real.
-                                actualizarTablaVehiculos(
-                                    vehiculo,
-                                    resultadoPerspectiva.velocidad
-                                );
-
-                                if (
-                                    resultadoPerspectiva.velocidad >
-                                    maximoRegistrado
-                                ) {
-                                    maximoRegistrado =
-                                        resultadoPerspectiva.velocidad;
-
-                                    velocidadMaxima.innerHTML =
-                                        `${maximoRegistrado.toFixed(2)} ` +
-                                        `<small>km/h</small>`;
-                                }
-
-                                // Evaluar infracción con la velocidad
-                                // más alta registrada para este vehículo.
-                                registrarInfraccionPerspectiva(
-                                    vehiculo,
-                                    resultadoPerspectiva.velocidad
-                                );
-
+                                velocidadMaxima.innerHTML =
+                                    `${maximoRegistrado.toFixed(2)} ` +
+                                    `<small>km/h</small>`;
                             }
+                        }
 
+                        // El radar prevalece sobre la continua.
+                        if (resultadoRadar) {
+                            actualizarTablaVehiculos(
+                                vehiculo,
+                                resultadoRadar.velocidad
+                            );
+
+                            if (
+                                resultadoRadar.velocidad >
+                                maximoRegistrado
+                            ) {
+                                maximoRegistrado =
+                                    resultadoRadar.velocidad;
+
+                                velocidadMaxima.innerHTML =
+                                    `${maximoRegistrado.toFixed(2)} ` +
+                                    `<small>km/h</small>`;
+                            }
                         }
 
                     }
@@ -1376,12 +1477,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
 
                 // --------------------------------------
-                // 8. CALCULAR VELOCIDADES (TRES LÍNEAS)
+                // 8. VELOCIDADES YA CALCULADAS ARRIBA
+                // (radar 2 líneas + estimación continua)
                 // --------------------------------------
-
-                vehiculos.forEach(vehiculo => {
-                    procesarVelocidad(vehiculo);
-                });
 
                 // --------------------------------------
                 // 9. DETECTAR Y LEER MATRÍCULAS
@@ -1408,6 +1506,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 ).length;
 
                 totalVehiculos.textContent = cantidad;
+
+                // --------------------------------------
+                // 12. MEDIR RENDIMIENTO
+                // --------------------------------------
+
+                actualizarRendimiento();
 
             } catch (error) {
 
@@ -1475,6 +1579,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
             ultimaDeteccion = 0;
             tiempoFrameAnterior = 0;
+
+            fpsContador = 0;
+            fpsInicio = performance.now();
+            msInferenciaAcumulado = 0;
+            msInferenciaMuestras = 0;
 
             mostrarVideo();
 
@@ -1600,6 +1709,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const matriculasCargadas = resultados[0];
             const vehiculosCargados = resultados[1];
             const ocrCargado = resultados[2];
+
+            actualizarProcesador();
 
             if (
                 matriculasCargadas &&

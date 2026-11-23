@@ -4,6 +4,11 @@
 // Tesseract.js
 // ======================================================
 
+// Los volcados de imagen en consola (toDataURL) son útiles
+// para depurar, pero cuestan tiempo y memoria en cada intento.
+// Actívalos solo si necesitas inspeccionar los recortes.
+const DEPURAR_OCR = false;
+
 let trabajadorOCR = null;
 
 let inicializandoOCR = false;
@@ -247,17 +252,21 @@ function prepararImagenOCR(imagen) {
 
     ctx.putImageData(datos, 0, 0);
 
-    // Log visual de la imagen procesada que recibe Tesseract.
-    console.log(
-        `%c   `,
-        `font-size:1px; ` +
-        `padding: ${Math.round(alto / 2)}px ${Math.round(ancho / 2)}px; ` +
-        `background: url(${canvas.toDataURL()}) no-repeat center/contain; ` +
-        `border: 2px solid #facc15; image-rendering: pixelated;`
-    );
+    if (DEPURAR_OCR) {
 
-    // Enlace directo para inspección: clic derecho → Abrir en nueva pestaña
-    console.log("[OCR imagen procesada] →", canvas.toDataURL());
+        // Log visual de la imagen procesada que recibe Tesseract.
+        console.log(
+            `%c   `,
+            `font-size:1px; ` +
+            `padding: ${Math.round(alto / 2)}px ${Math.round(ancho / 2)}px; ` +
+            `background: url(${canvas.toDataURL()}) no-repeat center/contain; ` +
+            `border: 2px solid #facc15; image-rendering: pixelated;`
+        );
+
+        // Enlace directo para inspección: clic derecho → Abrir en nueva pestaña
+        console.log("[OCR imagen procesada] →", canvas.toDataURL());
+
+    }
 
     return canvas;
 

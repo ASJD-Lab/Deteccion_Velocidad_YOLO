@@ -16,10 +16,9 @@ const CLASES_VEHICULOS = {
 };
 
 
-// Canvas y memoria reutilizables
+// Canvas reutilizable para el preprocesamiento.
 let canvasTemporalVehiculos = null;
 let contextoTemporalVehiculos = null;
-let tensorDatosVehiculos = null;
 
 
 // ======================================================
@@ -34,22 +33,43 @@ async function cargarModeloVehiculos() {
 
     try {
 
-        console.log("Cargando modelo YOLOv8n de vehículos...");
+        console.log("Cargando modelo YOLO de vehículos...");
 
-        // Asegurar que ONNX Runtime encuentre los archivos WASM
-        // tanto en desarrollo local como en Netlify.
-        ort.env.wasm.wasmPaths =
-            "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+        const respuesta = await fetch("../modelos/vehiculos.onnx");
 
-        modeloVehiculos = await ort.InferenceSession.create(
-            "../modelos/vehiculos.onnx",
-            {
-                executionProviders: ["wasm"],
-                graphOptimizationLevel: "all"
-            }
+        if (!respuesta.ok) {
+
+            throw new Error(
+                "No se pudo descargar vehiculos.onnx " +
+                `(HTTP ${respuesta.status}).`
+            );
+
+        }
+
+        const tipoContenido =
+            respuesta.headers.get("content-type") || "";
+
+        if (tipoContenido.includes("text/html")) {
+
+            throw new Error(
+                "vehiculos.onnx no se encontró en modelos/."
+            );
+
+        }
+
+        const buffer = await respuesta.arrayBuffer();
+
+        // El modelo se ejecuta en un worker: WebGPU si está
+        // disponible y, si no, WASM. Así la inferencia no
+        // bloquea el hilo principal ni el video.
+        modeloVehiculos = await SesionONNX.crear(buffer, {
+            tamanoEntrada: TAMANO_MODELO_VEHICULOS,
+            etiqueta: "Modelo de vehículos"
+        });
+
+        console.log(
+            `Modelo de vehículos cargado (${modeloVehiculos.ep}).`
         );
-
-        console.log("Modelo de vehículos cargado correctamente.");
 
         return modeloVehiculos;
 
@@ -159,30 +179,23 @@ function preprocesarVehiculo(video) {
     const longitudTensor = 3 * tamanoCanal;
 
 
-    // Reutilizar memoria siempre que sea posible
-    if (
-        !tensorDatosVehiculos ||
-        tensorDatosVehiculos.length !== longitudTensor
-    ) {
-
-        tensorDatosVehiculos = new Float32Array(
-            longitudTensor
-        );
-
-    }
+    // El worker recibe este Float32Array como transferible:
+    // su buffer se desacopla del hilo principal al enviarlo.
+    // Por eso se crea uno nuevo en cada fotograma.
+    const tensor = new Float32Array(longitudTensor);
 
 
     for (let i = 0; i < tamanoCanal; i++) {
 
         const posicion = i * 4;
 
-        tensorDatosVehiculos[i] =
+        tensor[i] =
             datos[posicion] / 255;
 
-        tensorDatosVehiculos[i + tamanoCanal] =
+        tensor[i + tamanoCanal] =
             datos[posicion + 1] / 255;
 
-        tensorDatosVehiculos[i + tamanoCanal * 2] =
+        tensor[i + tamanoCanal * 2] =
             datos[posicion + 2] / 255;
 
     }
@@ -190,7 +203,7 @@ function preprocesarVehiculo(video) {
 
     return {
 
-        tensor: tensorDatosVehiculos,
+        tensor,
 
         escala,
 
@@ -487,8 +500,7 @@ async function detectarVehiculos(
     const parametros = preprocesarVehiculo(video);
 
 
-    const tensorEntrada = new ort.Tensor(
-        "float32",
+    const salida = await modeloVehiculos.run(
         parametros.tensor,
         [
             1,
@@ -497,21 +509,6 @@ async function detectarVehiculos(
             TAMANO_MODELO_VEHICULOS
         ]
     );
-
-
-    const nombreEntrada = modeloVehiculos.inputNames[0];
-
-    const entradas = {};
-
-    entradas[nombreEntrada] = tensorEntrada;
-
-
-    const resultados = await modeloVehiculos.run(entradas);
-
-
-    const nombreSalida = modeloVehiculos.outputNames[0];
-
-    const salida = resultados[nombreSalida];
 
 
     return procesarSalidaVehiculos(

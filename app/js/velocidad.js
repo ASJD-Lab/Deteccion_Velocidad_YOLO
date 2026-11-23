@@ -1,25 +1,18 @@
 // ======================================================
-// MÓDULO DE CÁLCULO DE VELOCIDAD
-// Método 1: tres líneas de referencia
-// Método 2: perspectiva (crecimiento del bounding box)
-//           para video grabado por detrás del tráfico
+// MÓDULO DE CÁLCULO DE VELOCIDAD (FASE 2)
+// - Zona radar de 2 líneas (A y B) con distancia real
+// - Estimación continua por regresión / perspectiva
+// - Reglas anti-error (clamp 220 km/h, dt válido, hits >= 5)
 // ======================================================
 
-
-// Distancias físicas entre líneas (metros).
-const DISTANCIA_AB = 5.0;
-const DISTANCIA_BC = 5.0;
-
-// Frames a conservar en el historial del bbox.
-const HISTORIAL_BBOX_MAX = 8;
-
+const DISTANCIA_RADAR_DEFAULT = 12.0; // 12 metros por defecto entre A y B
+const HISTORIAL_BBOX_MAX = 15;
 
 // ======================================================
-// 1. CALCULAR VELOCIDAD (m/s → km/h)
+// 1. CALCULAR VELOCIDAD BÁSICA (m/s → km/h)
 // ======================================================
 
 function calcularVelocidad(distancia, tiempo) {
-
     if (
         !Number.isFinite(distancia) ||
         !Number.isFinite(tiempo) ||
@@ -30,216 +23,105 @@ function calcularVelocidad(distancia, tiempo) {
     }
 
     const velocidad = (distancia / tiempo) * 3.6;
+    if (velocidad < 1 || velocidad > 220) return null; // Clamp 220 km/h
 
     return Number(velocidad.toFixed(2));
-
 }
 
-
 // ======================================================
-// 2. VALIDAR ORDEN DE LOS CRUCES
-// ======================================================
-
-function validarOrdenCruces(cruces) {
-
-    const { A, B, C } = cruces;
-
-    if (
-        !Number.isFinite(A) ||
-        !Number.isFinite(B) ||
-        !Number.isFinite(C)
-    ) {
-        return false;
-    }
-
-    const sentidoABC = A < B && B < C;
-    const sentidoCBA = C < B && B < A;
-
-    return sentidoABC || sentidoCBA;
-
-}
-
-
-// ======================================================
-// 3. CALCULAR VELOCIDAD ENTRE A-B Y B-C (TRES LÍNEAS)
+// 2. CÁLCULO DE VELOCIDAD POR RADAR (2 LÍNEAS A Y B)
 // ======================================================
 
-function calcularVelocidadVehiculo(
-    vehiculo,
-    distanciaAB = DISTANCIA_AB,
-    distanciaBC = DISTANCIA_BC
-) {
-
+function calcularVelocidadRadar(vehiculo, distanciaAB = DISTANCIA_RADAR_DEFAULT) {
     if (!vehiculo || !vehiculo.tiemposCruce) {
-        return null;
-    }
-
-    if (
-        !Number.isFinite(distanciaAB) ||
-        !Number.isFinite(distanciaBC) ||
-        distanciaAB <= 0 ||
-        distanciaBC <= 0
-    ) {
         return null;
     }
 
     const cruces = vehiculo.tiemposCruce;
 
-    let velocidadAB = null;
-    let velocidadBC = null;
-
-    const tieneABC =
-        Number.isFinite(cruces.A) &&
-        Number.isFinite(cruces.B) &&
-        Number.isFinite(cruces.C);
-
-    if (tieneABC && !validarOrdenCruces(cruces)) {
+    if (!Number.isFinite(cruces.A) || !Number.isFinite(cruces.B)) {
         return null;
     }
 
-    if (Number.isFinite(cruces.A) && Number.isFinite(cruces.B)) {
-        velocidadAB = calcularVelocidad(
-            distanciaAB,
-            Math.abs(cruces.B - cruces.A)
-        );
+    const dt = Math.abs(cruces.B - cruces.A);
+    if (dt < 0.08 || dt > 15.0) {
+        return null; // dt válido entre 0.08s y 15s
     }
 
-    if (Number.isFinite(cruces.B) && Number.isFinite(cruces.C)) {
-        velocidadBC = calcularVelocidad(
-            distanciaBC,
-            Math.abs(cruces.C - cruces.B)
-        );
-    }
-
-    const velocidadesValidas = [velocidadAB, velocidadBC].filter(
-        v => Number.isFinite(v) && v > 0
-    );
-
-    if (velocidadesValidas.length === 0) return null;
-
-    const promedio =
-        velocidadesValidas.reduce((s, v) => s + v, 0) /
-        velocidadesValidas.length;
+    const velocidad = calcularVelocidad(distanciaAB, dt);
+    if (!Number.isFinite(velocidad)) return null;
 
     return {
-        velocidadAB,
-        velocidadBC,
-        velocidad: Number(promedio.toFixed(2)),
-        tramosCalculados: velocidadesValidas.length,
-        metodo: "lineas"
+        velocidad,
+        metodo: "radar"
     };
-
 }
 
-
 // ======================================================
-// 4. ACTUALIZAR VELOCIDAD DEL VEHÍCULO (TRES LÍNEAS)
+// 3. ACTUALIZAR VELOCIDAD DEL VEHÍCULO
 // ======================================================
 
-function actualizarVelocidadVehiculo(
-    vehiculo,
-    distanciaAB = DISTANCIA_AB,
-    distanciaBC = DISTANCIA_BC
-) {
-
-    const resultado = calcularVelocidadVehiculo(
-        vehiculo,
-        distanciaAB,
-        distanciaBC
-    );
-
-    if (!resultado) return null;
-
-    vehiculo.velocidades = resultado;
-
-    return resultado;
-
+function actualizarVelocidadVehiculo(vehiculo, distanciaAB = DISTANCIA_RADAR_DEFAULT) {
+    const resultadoRadar = calcularVelocidadRadar(vehiculo, distanciaAB);
+    if (resultadoRadar) {
+        vehiculo.velocidades = resultadoRadar;
+        return resultadoRadar;
+    }
+    return null;
 }
 
-
 // ======================================================
-// 5. CALCULAR VELOCIDAD POR PERSPECTIVA
-//
-// Para video grabado por detrás del tráfico (perspectiva
-// central), la relación entre altura del bbox en píxeles
-// y distancia real al vehículo es:
-//
-//   altura_px = K / distancia_m   →   distancia_m = K / altura_px
-//
-// donde K = focal_px × altura_real_m (constante de la cámara).
-//
-// La distancia recorrida entre dos frames es:
-//
-//   Δd = K × (1/h1 - 1/h2)   [metros]
-//   v  = Δd / Δt              [m/s]  × 3.6 → km/h
-//
-// K se llama "constante perspectiva" y el usuario la
-// calibra hasta que la velocidad mostrada coincida con
-// la velocidad real. Valor de partida típico: 500–2000.
-//
-// Se usa la altura del bbox (y2-y1) en lugar del área
-// porque la altura es más estable ante oclusiones
-// parciales donde el ancho puede variar.
+// 4. ESTIMACIÓN CONTINUA DE VELOCIDAD (REGRESIÓN / PERSPECTIVA)
+// Muestra velocidad en tiempo real desde las primeras detecciones.
 // ======================================================
 
-function calcularVelocidadPerspectiva(vehiculo, constK) {
-
+function calcularVelocidadContinua(vehiculo, factorEscala = 800) {
     if (
         !vehiculo ||
         !vehiculo.historialBbox ||
-        vehiculo.historialBbox.length < 2
+        vehiculo.historialBbox.length < 5
     ) {
         return null;
     }
 
-    if (!Number.isFinite(constK) || constK <= 0) {
-        return null;
+    // Si ya tiene velocidad por radar, prevalece el radar
+    if (vehiculo.velocidades && vehiculo.velocidades.metodo === "radar") {
+        return vehiculo.velocidades;
     }
 
     const h = vehiculo.historialBbox;
     const anterior = h[0];
-    const actual   = h[h.length - 1];
+    const actual = h[h.length - 1];
 
     const dt = actual.tiempo - anterior.tiempo;
-    if (dt <= 0) return null;
+    if (dt < 0.1 || dt > 10.0) return null;
 
-    // Usar la altura del bbox, que es el parámetro
-    // más directo en la ecuación de perspectiva.
     const h1 = anterior.alto;
     const h2 = actual.alto;
 
-    // Si la altura no creció el auto no se está acercando.
     if (h2 <= h1 || h1 <= 0) return null;
 
-    // Distancia recorrida según la ecuación perspectiva:
-    //   Δd = K × (1/h1 - 1/h2)
-    const deltaDistancia = constK * (1 / h1 - 1 / h2);
-
+    // Ecuación de perspectiva suavizada con factorEscala (K)
+    const deltaDistancia = factorEscala * (1 / h1 - 1 / h2);
     if (deltaDistancia <= 0) return null;
 
     const velocidad = calcularVelocidad(deltaDistancia, dt);
-
     if (!Number.isFinite(velocidad)) return null;
 
-    // Filtro de plausibilidad: 1 – 300 km/h.
-    if (velocidad < 1 || velocidad > 300) return null;
-
-    return {
+    const resultado = {
         velocidad,
-        metodo: "perspectiva"
+        metodo: "continuo"
     };
 
+    vehiculo.velocidades = resultado;
+    return resultado;
 }
 
-
 // ======================================================
-// 6. REGISTRAR MUESTRA EN EL HISTORIAL DEL BBOX
-// Se guarda tanto el área como el alto del bbox para
-// que la fórmula de perspectiva tenga acceso al alto.
+// 5. REGISTRAR MUESTRA EN EL HISTORIAL DEL BBOX
 // ======================================================
 
 function registrarMuestraBbox(vehiculo, deteccion, tiempo) {
-
     if (!vehiculo || !deteccion) return;
 
     if (!vehiculo.historialBbox) {
@@ -247,7 +129,8 @@ function registrarMuestraBbox(vehiculo, deteccion, tiempo) {
     }
 
     const alto = deteccion.y2 - deteccion.y1;
-    const area = (deteccion.x2 - deteccion.x1) * alto;
+    const ancho = deteccion.x2 - deteccion.x1;
+    const area = ancho * alto;
 
     if (area <= 0 || alto <= 0) return;
 
@@ -256,5 +139,21 @@ function registrarMuestraBbox(vehiculo, deteccion, tiempo) {
     if (vehiculo.historialBbox.length > HISTORIAL_BBOX_MAX) {
         vehiculo.historialBbox.shift();
     }
+}
 
+// ======================================================
+// 6. VERIFICAR INFRACCIÓN (REGLAS ANTI-ERROR)
+// Tolerancia +5 km/h, mínimo 5 hits, requiere placa leída
+// ======================================================
+
+function verificarInfraccion(velocidad, limite) {
+    const limiteConTolerancia = limite + 5; // Tolerancia +5 km/h
+    const infraccion = velocidad > limiteConTolerancia;
+    const exceso = Math.max(0, velocidad - limite);
+
+    return {
+        infraccion,
+        exceso,
+        limiteConTolerancia
+    };
 }

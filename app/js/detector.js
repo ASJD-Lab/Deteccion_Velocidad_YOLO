@@ -17,9 +17,6 @@ const contextoDetector = canvasDetector.getContext("2d", {
     willReadFrequently: true
 });
 
-// Buffer reutilizable del tensor CHW (evita allocar 1.2 MB en cada inferencia).
-const _tensorDetector = new Float32Array(3 * TAMANO_ENTRADA * TAMANO_ENTRADA);
-
 
 // ======================================================
 // 1. CARGAR MODELO ONNX
@@ -29,23 +26,49 @@ async function cargarModelo() {
 
     try {
 
-        console.log("Cargando modelo YOLOv8 de matrículas...");
+        console.log("Cargando modelo YOLO de matrículas...");
 
-        ort.env.wasm.wasmPaths =
-            "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
-
-        modeloDetector = await ort.InferenceSession.create(
-            "../modelos/best_deteccion.onnx",
-            {
-                executionProviders: ["wasm"],
-                graphOptimizationLevel: "all"
-            }
+        const respuesta = await fetch(
+            "../modelos/best_deteccion.onnx"
         );
+
+        if (!respuesta.ok) {
+
+            throw new Error(
+                "No se pudo descargar best_deteccion.onnx " +
+                `(HTTP ${respuesta.status}).`
+            );
+
+        }
+
+        const tipoContenido =
+            respuesta.headers.get("content-type") || "";
+
+        if (tipoContenido.includes("text/html")) {
+
+            throw new Error(
+                "best_deteccion.onnx no se encontró en modelos/."
+            );
+
+        }
+
+        const buffer = await respuesta.arrayBuffer();
+
+        // Igual que el detector de vehículos: worker con
+        // WebGPU y respaldo a WASM para no bloquear la UI.
+        modeloDetector = await SesionONNX.crear(buffer, {
+            tamanoEntrada: TAMANO_ENTRADA,
+            etiqueta: "Modelo de matrículas"
+        });
 
         console.log("Modelo de matrículas cargado correctamente.");
 
         console.log("Entrada:", modeloDetector.inputNames);
         console.log("Salida:", modeloDetector.outputNames);
+
+        console.log(
+            `Procesador de matrículas: ${modeloDetector.ep}.`
+        );
 
         const estado = document.getElementById("estadoModelo");
 
@@ -164,9 +187,9 @@ function preprocesarImagen(imagen) {
 
     const area = TAMANO_ENTRADA * TAMANO_ENTRADA;
 
-    // Reutilizar el buffer preallocado en lugar de crear
-    // un nuevo Float32Array (1.2 MB) en cada inferencia.
-    const tensor = _tensorDetector;
+    // Buffer nuevo por inferencia: se transfiere al worker
+    // y deja de pertenecer al hilo principal.
+    const tensor = new Float32Array(3 * area);
 
     // Convertir RGBA a RGB normalizado y formato CHW.
     for (let i = 0; i < area; i++) {
@@ -432,23 +455,10 @@ async function detectarMatriculas(imagen, confianza = 0.40) {
 
         const parametros = preprocesarImagen(imagen);
 
-        const tensorEntrada = new ort.Tensor(
-            "float32",
+        const salida = await modeloDetector.run(
             parametros.tensor,
             [1, 3, TAMANO_ENTRADA, TAMANO_ENTRADA]
         );
-
-        const nombreEntrada = modeloDetector.inputNames[0];
-
-        const entradas = {};
-
-        entradas[nombreEntrada] = tensorEntrada;
-
-        const resultados = await modeloDetector.run(entradas);
-
-        const salida = resultados[
-            modeloDetector.outputNames[0]
-        ];
 
         return procesarSalida(
             salida,

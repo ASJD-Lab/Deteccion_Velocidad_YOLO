@@ -16,3 +16,5 @@ temp_video.mp4
 # Dependencias del sistema o credenciales locales (si usas archivos .env)
 .env
 .DS_Store
+
+Plan*.txt
