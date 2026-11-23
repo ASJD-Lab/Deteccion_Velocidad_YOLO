@@ -93,9 +93,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let ocrProcesando = false;
     let ultimoIntentoOCR = 0;
 
-    const INTERVALO_OCR = 1500;
-    const CONFIANZA_PLACA = 0.35;
-    const MAX_INTENTOS_OCR = 6;
+    const INTERVALO_OCR = 800;
+    const CONFIANZA_PLACA = 0.30;
+    const MAX_INTENTOS_OCR = 10;
 
     // Identifica cada reproducción.
     let sesionVideo = 0;
@@ -495,6 +495,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         vehiculo.ultimoResultadoOCR = resultadoOCR;
 
+        if (!vehiculo.lecturasOCR) {
+            vehiculo.lecturasOCR = [];
+        }
+
+        if (resultadoOCR && resultadoOCR.texto) {
+            vehiculo.lecturasOCR.push(resultadoOCR.texto);
+        }
+
         if (resultadoOCR && resultadoOCR.identificada) {
 
             vehiculo.matricula = resultadoOCR.texto;
@@ -603,6 +611,39 @@ document.addEventListener("DOMContentLoaded", () => {
                 !vehiculo.matricula &&
                 vehiculo.ocrIntentos >= MAX_INTENTOS_OCR
             ) {
+
+                // Votación: elegir la lectura más frecuente
+                // entre los intentos acumulados.
+                if (vehiculo.lecturasOCR && vehiculo.lecturasOCR.length > 0) {
+
+                    const conteo = {};
+                    vehiculo.lecturasOCR.forEach(t => {
+                        conteo[t] = (conteo[t] || 0) + 1;
+                    });
+
+                    const masFrecuente = Object.keys(conteo).reduce(
+                        (a, b) => (conteo[a] >= conteo[b] ? a : b)
+                    );
+
+                    if (masFrecuente) {
+                        vehiculo.matricula = masFrecuente;
+                        vehiculo.confianzaOCR = 20;
+                        vehiculo.ocrFinalizado = true;
+
+                        console.log(
+                            `MATRÍCULA (votación): Vehículo ${vehiculo.id} -> ${vehiculo.matricula}`
+                        );
+
+                        actualizarTablaVehiculos(
+                            vehiculo,
+                            vehiculo.velocidades?.velocidad ?? null
+                        );
+
+                        actualizarMatriculaMulta(vehiculo);
+                        return;
+                    }
+
+                }
 
                 vehiculo.ocrFinalizado = true;
 
@@ -716,17 +757,12 @@ document.addEventListener("DOMContentLoaded", () => {
             ? alto * configuracion.lineaB
             : ancho * configuracion.lineaB;
 
-        const lineaC = configuracion.orientacion === "horizontal"
-            ? alto * configuracion.lineaC
-            : ancho * configuracion.lineaC;
-
         dibujarLineas(
             ctx,
             ancho,
             alto,
             lineaA,
             lineaB,
-            lineaC,
             configuracion.orientacion
         );
 
@@ -1287,7 +1323,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 // para evitar tiempos de cruce mezclados entre
                 // ciclos distintos (lo que produce velocidades
                 // absurdas o cruces no detectados).
-                if (tiempoFrame < tiempoFrameAnterior - 0.5) {
+                // Desactivado para permitir pruebas con videos cortos
+                // (dataset VS13). Para reactivar la detección de loop,
+                // cambiar la condición a: tiempoFrame < tiempoFrameAnterior - 0.5
+                if (false) {
 
                     console.log(
                         "Loop de video detectado. " +
@@ -1416,7 +1455,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     // Radar (2 líneas) siempre que existan ambos cruces.
                     const resultadoRadar = actualizarVelocidadVehiculo(
                         vehiculo,
-                        Number(distanciaRadarInput?.value) || 12.0
+                        Number(distanciaABInput?.value) || 12.0
                     );
 
                     // Estimación continua por regresión/perspectiva.

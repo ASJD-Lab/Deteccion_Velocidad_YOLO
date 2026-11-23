@@ -292,6 +292,40 @@ function normalizarMatricula(texto) {
 
 
 // ======================================================
+// 4b. VALIDAR FORMATO DE PLACA MEXICANA
+// Formatos comunes: 3 letras + 3/4 dígitos, o 2-3 letras
+// + 3-4 dígitos + letra, etc. Se exige al menos una letra
+// y un dígito, y longitud entre 5 y 8 caracteres.
+// ======================================================
+
+function esPlacaMexicana(texto) {
+
+    if (!texto || texto.length < 5 || texto.length > 8) {
+        return false;
+    }
+
+    const tieneLetra = /[A-Z]/.test(texto);
+    const tieneDigito = /[0-9]/.test(texto);
+
+    if (!tieneLetra || !tieneDigito) {
+        return false;
+    }
+
+    // Rechazar cadenas con más de 4 letras o más de 4 dígitos
+    // consecutivos (típico de ruido OCR).
+    const letras = (texto.match(/[A-Z]/g) || []).length;
+    const digitos = (texto.match(/[0-9]/g) || []).length;
+
+    if (letras > 4 || digitos > 4) {
+        return false;
+    }
+
+    return true;
+
+}
+
+
+// ======================================================
 // 5. LEER MATRÍCULA
 // ======================================================
 
@@ -343,8 +377,7 @@ async function leerMatricula(imagen) {
         // - Confianza >= 20 (Tesseract devuelve valores bajos en
         //   imágenes de video; exigir 35 descarta lecturas válidas)
         const identificada =
-            texto.length >= 3 &&
-            texto.length <= 10 &&
+            esPlacaMexicana(texto) &&
             confianza >= 20;
 
         console.log("Resultado OCR:", {

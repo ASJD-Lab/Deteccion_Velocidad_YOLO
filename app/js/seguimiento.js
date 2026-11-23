@@ -7,7 +7,7 @@ let vehiculosActivos = [];
 let siguienteID = 1;
 
 const TTL_MS = 1200; // 1200 ms de tiempo de vida sin detecciones
-const MIN_HITS = 5;  // Mínimo de detecciones para considerar válido / multar
+const MIN_HITS = 2;  // Mínimo de detecciones (bajado para videos cortos/dataset)
 
 // ======================================================
 // 1. OBTENER EL PUNTO INFERIOR CENTRAL
@@ -83,7 +83,7 @@ function actualizarSeguimiento(detecciones, tiempoVideo = performance.now()) {
         });
 
         if (mejorVehiculo) {
-            const dtSec = vehiculo.ultimoTiempo ? (tiempoVideo - vehiculo.ultimoTiempo) / 1000 : 0.033;
+            const dtSec = mejorVehiculo.ultimoTiempo ? (tiempoVideo - mejorVehiculo.ultimoTiempo) / 1000 : 0.033;
 
             mejorVehiculo.puntoAnterior = { ...mejorVehiculo.puntoActual };
             mejorVehiculo.puntoActual = punto;
