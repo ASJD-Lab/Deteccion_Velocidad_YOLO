@@ -606,8 +606,8 @@ document.addEventListener("DOMContentLoaded", () => {
         // Usar ONNX como principal (sin Tesseract).
         let resultadoOCR = await leerMatriculaONNX(canvasPlacaOCR);
 
-        // Fallback a Tesseract si ONNX no identifica la placa.
-        if (!resultadoOCR || !resultadoOCR.identificada) {
+        // Fallback a Tesseract solo si ONNX no devolvió texto.
+        if (!resultadoOCR || !resultadoOCR.texto) {
             try {
                 const resTess = await leerMatricula(canvasPlacaOCR);
                 if (resTess && resTess.identificada) {
