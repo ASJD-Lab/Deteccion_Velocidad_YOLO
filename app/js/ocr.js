@@ -326,12 +326,11 @@ function esPlacaMexicana(texto) {
         return false;
     }
 
-    // Rechazar cadenas con más de 4 letras o más de 4 dígitos
-    // consecutivos (típico de ruido OCR).
+    // Rechazar cadenas con más de 6 letras o más de 5 dígitos.
     const letras = (texto.match(/[A-Z]/g) || []).length;
     const digitos = (texto.match(/[0-9]/g) || []).length;
 
-    if (letras > 4 || digitos > 4) {
+    if (letras > 6 || digitos > 5) {
         return false;
     }
 
@@ -550,7 +549,7 @@ async function leerMatriculaONNX(imagen) {
 
         const confianza = numT > 0 ? (confianzaTotal / numT) * 100 : 0;
         const textoNorm = normalizarMatricula(texto);
-        const identificada = esPlacaMexicana(textoNorm) && confianza >= 10;
+        const identificada = esPlacaMexicana(textoNorm) && confianza >= 5;
 
         console.log("Resultado OCR ONNX:", { texto: textoNorm, confianza, identificada });
 

@@ -555,8 +555,8 @@ document.addEventListener("DOMContentLoaded", () => {
         // Aplicar reconocimiento OCR.
         let resultadoOCR = await leerMatriculaONNX(canvasPlacaOCR);
 
-        // Fallback a Tesseract si ONNX no devuelve resultado.
-        if (!resultadoOCR || !resultadoOCR.identificada) {
+        // Fallback a Tesseract solo si ONNX no devolvió texto.
+        if (!resultadoOCR || !resultadoOCR.texto) {
             console.log("[OCR] Fallback a Tesseract");
             resultadoOCR = await leerMatricula(canvasPlacaOCR);
         }
