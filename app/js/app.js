@@ -1047,6 +1047,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const resultado = verificarInfraccion(velocidad, limite);
 
         if (!resultado.infraccion) return;
+        if (vehiculo.hits < 2) return; // Mínimo 2 detecciones para multar (consistente con el tracker)
         if (multasRegistradas.has(vehiculo.id)) return;
 
         multasRegistradas.add(vehiculo.id);
@@ -1060,26 +1061,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const fila = document.createElement("tr");
         fila.dataset.vehiculoId = vehiculo.id;
-
-        // --- Celda imagen de placa ---
-        const celdaImagen = document.createElement("td");
-        celdaImagen.className = "imagen-placa-multa";
-
-        if (vehiculo.imagenPlaca) {
-
-            const img = document.createElement("img");
-            img.src    = vehiculo.imagenPlaca;
-            img.alt    = "Placa";
-            img.style.cssText =
-                "max-width:120px; max-height:50px; " +
-                "border:2px solid #38bdf8; border-radius:4px; " +
-                "image-rendering:pixelated;";
-            celdaImagen.appendChild(img);
-
-        } else {
-            celdaImagen.textContent = "—";
-            celdaImagen.style.color = "#64748b";
-        }
 
         // --- Celda matrícula ---
         const celdaMatricula = document.createElement("td");
@@ -1102,7 +1083,6 @@ document.addEventListener("DOMContentLoaded", () => {
         celdaFecha.textContent = obtenerFechaHora();
 
         fila.append(
-            celdaImagen,
             celdaMatricula,
             celdaVelocidad,
             celdaLimite,
@@ -1333,7 +1313,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (tablaMultas) {
             tablaMultas.innerHTML = `
                 <tr class="empty-message">
-                    <td colspan="6">No hay infracciones registradas.</td>
+                    <td colspan="5">No hay infracciones registradas.</td>
                 </tr>
             `;
         }
@@ -1624,6 +1604,17 @@ document.addEventListener("DOMContentLoaded", () => {
                                 resultadoContinuo.velocidad
                             );
 
+                            // Registrar infracción solo si no hay
+                            // medida real por radar (evita multas
+                            // por estimación aproximada cuando ya
+                            // existe una medida exacta).
+                            if (!resultadoRadar) {
+                                registrarInfraccion(
+                                    vehiculo,
+                                    resultadoContinuo.velocidad
+                                );
+                            }
+
                             if (
                                 resultadoContinuo.velocidad >
                                 maximoRegistrado
@@ -1640,6 +1631,11 @@ document.addEventListener("DOMContentLoaded", () => {
                         // El radar prevalece sobre la continua.
                         if (resultadoRadar) {
                             actualizarTablaVehiculos(
+                                vehiculo,
+                                resultadoRadar.velocidad
+                            );
+
+                            registrarInfraccion(
                                 vehiculo,
                                 resultadoRadar.velocidad
                             );

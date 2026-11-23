@@ -147,8 +147,8 @@ function registrarMuestraBbox(vehiculo, deteccion, tiempo) {
 // ======================================================
 
 function verificarInfraccion(velocidad, limite) {
-    const limiteConTolerancia = limite + 5; // Tolerancia +5 km/h
-    const infraccion = velocidad > limiteConTolerancia;
+    const limiteConTolerancia = limite;
+    const infraccion = velocidad > limite;
     const exceso = Math.max(0, velocidad - limite);
 
     return {
