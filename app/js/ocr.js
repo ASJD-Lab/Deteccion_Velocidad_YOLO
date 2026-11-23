@@ -313,24 +313,14 @@ function normalizarVariantes(texto) {
 // y un dígito, y longitud entre 5 y 8 caracteres.
 // ======================================================
 
-function esPlacaMexicana(texto) {
+function esPlacaValida(texto) {
 
-    if (!texto || texto.length < 5 || texto.length > 8) {
+    if (!texto || texto.length < 4 || texto.length > 10) {
         return false;
     }
 
-    const tieneLetra = /[A-Z]/.test(texto);
-    const tieneDigito = /[0-9]/.test(texto);
-
-    if (!tieneLetra || !tieneDigito) {
-        return false;
-    }
-
-    // Rechazar cadenas con más de 6 letras o más de 5 dígitos.
-    const letras = (texto.match(/[A-Z]/g) || []).length;
-    const digitos = (texto.match(/[0-9]/g) || []).length;
-
-    if (letras > 6 || digitos > 5) {
+    // Aceptar cualquier texto alfanumérico (placas de cualquier país).
+    if (!/^[A-Z0-9]+$/.test(texto)) {
         return false;
     }
 
@@ -391,8 +381,8 @@ async function leerMatricula(imagen) {
         // - Confianza >= 20 (Tesseract devuelve valores bajos en
         //   imágenes de video; exigir 35 descarta lecturas válidas)
         const identificada =
-            esPlacaMexicana(texto) &&
-            confianza >= 15;
+            esPlacaValida(texto) &&
+            confianza >= 3;
 
         console.log("Resultado OCR:", {
             texto,
@@ -531,25 +521,37 @@ async function leerMatriculaONNX(imagen) {
         let prevIdx = -1;
 
         for (let t = 0; t < numT; t++) {
-            let maxIdx = 0;
+            // Softmax para obtener probabilidades.
             let maxVal = -Infinity;
             for (let c = 0; c < numC; c++) {
                 const val = logits[t * numC + c];
-                if (val > maxVal) {
-                    maxVal = val;
+                if (val > maxVal) maxVal = val;
+            }
+            let sumExp = 0;
+            const probs = new Array(numC);
+            for (let c = 0; c < numC; c++) {
+                probs[c] = Math.exp(logits[t * numC + c] - maxVal);
+                sumExp += probs[c];
+            }
+            let maxIdx = 0;
+            let maxProb = 0;
+            for (let c = 0; c < numC; c++) {
+                probs[c] /= sumExp;
+                if (probs[c] > maxProb) {
+                    maxProb = probs[c];
                     maxIdx = c;
                 }
             }
             if (maxIdx !== BLANK_IDX && maxIdx !== prevIdx) {
                 texto += ALFABETO_OCR[maxIdx];
-                confianzaTotal += maxVal;
+                confianzaTotal += maxProb;
             }
             prevIdx = maxIdx;
         }
 
         const confianza = numT > 0 ? (confianzaTotal / numT) * 100 : 0;
         const textoNorm = normalizarMatricula(texto);
-        const identificada = esPlacaMexicana(textoNorm) && confianza >= 5;
+        const identificada = esPlacaValida(textoNorm) && confianza >= 3;
 
         console.log("Resultado OCR ONNX:", { texto: textoNorm, confianza, identificada });
 
