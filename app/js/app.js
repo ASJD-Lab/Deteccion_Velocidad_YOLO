@@ -547,6 +547,13 @@ document.addEventListener("DOMContentLoaded", () => {
             console.log(`Vehículo ${vehiculo.id}: placa mejor (${tamanoActual}px²), reseteando intentos.`);
         }
 
+        // Ignorar placas demasiado pequeñas (vehículo lejano):
+        // se reintentará cuando el recorte sea mayor.
+        if (placaAncho < 40 || placaAlto < 15) {
+            console.log(`Vehículo ${vehiculo.id}: placa demasiado pequeña (${placaAncho}×${placaAlto}px), esperando mejor encuadre.`);
+            return;
+        }
+
         if (placaAncho < 5 || placaAlto < 5) return;
 
         // Coordenadas de la placa en el video.

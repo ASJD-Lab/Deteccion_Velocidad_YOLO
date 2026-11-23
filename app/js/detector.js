@@ -441,7 +441,7 @@ function procesarSalida(salida, parametros, confianzaMinima) {
 // Recibe un video, canvas o imagen.
 // Esto permite analizar también el recorte de un vehículo.
 
-async function detectarMatriculas(imagen, confianza = 0.40) {
+async function detectarMatriculas(imagen, confianza = 0.15) {
 
     if (!modeloDetector) {
         return [];
