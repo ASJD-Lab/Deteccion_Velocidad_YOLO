@@ -94,7 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let ultimoIntentoOCR = 0;
 
     const INTERVALO_OCR = 300;
-    const CONFIANZA_PLACA = 0.10;
+    const CONFIANZA_PLACA = 0.05;
     const MAX_INTENTOS_OCR = 20;
 
     // Identifica cada reproducción.
@@ -495,15 +495,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         }
 
-        // Filtrar placas muy pequeñas (menos de 20×8 px).
-        const placasValidas = placas.filter(p => {
-            const w = p.x2 - p.x1;
-            const h = p.y2 - p.y1;
-            return w >= 20 && h >= 8;
-        });
+        // Aceptar todas las placas detectadas.
+        const placasValidas = placas;
 
         if (placasValidas.length === 0) {
-            console.log(`Vehículo ${vehiculo.id}: placas detectadas pero muy pequeñas.`);
+            console.log(`Vehículo ${vehiculo.id}: no se encontró matrícula.`);
             return;
         }
 
@@ -545,8 +541,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Reutilizar canvas preallocado para evitar
         // crear un nuevo elemento DOM en cada intento OCR.
-        canvasPlacaOCR.width  = Math.max(1, Math.ceil(srcAncho));
-        canvasPlacaOCR.height = Math.max(1, Math.ceil(srcAlto));
+        const escalaOCR = 4;
+        canvasPlacaOCR.width  = Math.max(1, Math.ceil(srcAncho * escalaOCR));
+        canvasPlacaOCR.height = Math.max(1, Math.ceil(srcAlto * escalaOCR));
 
         // Recortar desde la captura mejorada del vehículo (con padding).
         // Las coordenadas ya están en el espacio del recorte mejorado.
@@ -573,7 +570,13 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log("[OCR recorte crudo] →", canvasPlacaOCR.toDataURL());
 
         // Aplicar reconocimiento OCR.
-        const resultadoOCR = await leerMatriculaONNX(canvasPlacaOCR);
+        let resultadoOCR = await leerMatriculaONNX(canvasPlacaOCR);
+
+        // Fallback a Tesseract si ONNX no devuelve resultado.
+        if (!resultadoOCR || !resultadoOCR.texto) {
+            console.log("[OCR] Fallback a Tesseract");
+            resultadoOCR = await leerMatricula(canvasPlacaOCR);
+        }
 
         if (sesionActual !== sesionVideo) return;
 
