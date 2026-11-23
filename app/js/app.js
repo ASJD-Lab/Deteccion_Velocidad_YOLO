@@ -442,6 +442,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
     }
 
+    // Calcular nitidez (varianza del Laplaciano) de un canvas.
+    function calcularNitidezCanvas(canvas) {
+        const ctx = canvas.getContext("2d");
+        const datos = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        const ancho = canvas.width;
+        const alto = canvas.height;
+        let suma = 0, suma2 = 0, cuenta = 0;
+        for (let y = 1; y < alto - 1; y++) {
+            for (let x = 1; x < ancho - 1; x++) {
+                const idx = (y * ancho + x) * 4;
+                const laplaciano = Math.abs(
+                    datos[idx] * 4 -
+                    datos[idx - 4] - datos[idx + 4] -
+                    datos[idx - ancho * 4] - datos[idx + ancho * 4]
+                );
+                suma += laplaciano;
+                suma2 += laplaciano * laplaciano;
+                cuenta++;
+            }
+        }
+        if (cuenta === 0) return 0;
+        const media = suma / cuenta;
+        const varianza = (suma2 / cuenta) - (media * media);
+        return varianza;
+    }
+
     async function reconocerMatriculaVehiculo(
         vehiculo,
         sesionActual
@@ -495,11 +521,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
         }
 
-        // Aceptar todas las placas detectadas.
-        const placasValidas = placas;
+        // Filtrar placas muy pequeñas (< 40×15 px).
+        const placasValidas = placas.filter(p => {
+            const w = p.x2 - p.x1;
+            const h = p.y2 - p.y1;
+            return w >= 40 && h >= 15;
+        });
 
         if (placasValidas.length === 0) {
-            console.log(`Vehículo ${vehiculo.id}: no se encontró matrícula.`);
+            console.log(`Vehículo ${vehiculo.id}: placas detectadas pero muy pequeñas.`);
             return;
         }
 
@@ -509,6 +539,16 @@ document.addEventListener("DOMContentLoaded", () => {
         );
 
         const placa = placasValidas[0];
+
+        // Calcular nitidez del recorte de la placa.
+        const nitidez = calcularNitidezCanvas(canvasPlacaOCR);
+        if (!vehiculo.mejorNitidez || nitidez > vehiculo.mejorNitidez * 1.1) {
+            vehiculo.mejorNitidez = nitidez;
+        } else {
+            // Saltar si el recorte no es más nítido.
+            console.log(`Vehículo ${vehiculo.id}: recorte menos nítido, saltando.`);
+            return;
+        }
 
         const placaAncho = placa.x2 - placa.x1;
         const placaAlto = placa.y2 - placa.y1;
@@ -570,13 +610,13 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log("[OCR recorte crudo] →", canvasPlacaOCR.toDataURL());
 
         // Aplicar reconocimiento OCR.
-        // Usar Tesseract como principal (con preprocesamiento mejorado).
-        let resultadoOCR = await leerMatricula(canvasPlacaOCR);
+        // Usar ONNX como principal.
+        let resultadoOCR = await leerMatriculaONNX(canvasPlacaOCR);
 
-        // Fallback a ONNX si Tesseract no devuelve resultado.
+        // Fallback a Tesseract si ONNX no devuelve resultado.
         if (!resultadoOCR || !resultadoOCR.texto) {
-            console.log("[OCR] Fallback a ONNX");
-            resultadoOCR = await leerMatriculaONNX(canvasPlacaOCR);
+            console.log("[OCR] Fallback a Tesseract");
+            resultadoOCR = await leerMatricula(canvasPlacaOCR);
         }
 
         if (sesionActual !== sesionVideo) return;
