@@ -7,7 +7,7 @@
 // Los volcados de imagen en consola (toDataURL) son útiles
 // para depurar, pero cuestan tiempo y memoria en cada intento.
 // Actívalos solo si necesitas inspeccionar los recortes.
-const DEPURAR_OCR = false;
+const DEPURAR_OCR = true;
 
 let trabajadorOCR = null;
 

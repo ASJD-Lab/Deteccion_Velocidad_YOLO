@@ -94,7 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let ultimoIntentoOCR = 0;
 
     const INTERVALO_OCR = 500;
-    const CONFIANZA_PLACA = 0.18;
+    const CONFIANZA_PLACA = 0.10;
     const MAX_INTENTOS_OCR = 10;
 
     // Identifica cada reproducción.
@@ -405,6 +405,20 @@ document.addEventListener("DOMContentLoaded", () => {
         if (sesionActual !== sesionVideo) return;
 
         if (!procesando) return;
+
+        console.log(
+            `[DIAG] Vehículo ${vehiculo.id}: ${placas ? placas.length : 0} placas detectadas. ` +
+            `Recorte: ${recorte.ancho}×${recorte.alto}px.`
+        );
+
+        if (placas && placas.length > 0) {
+            placas.forEach((p, i) => {
+                console.log(
+                    `  placa ${i + 1}: confianza ${(p.confianza * 100).toFixed(1)}%, ` +
+                    `tamaño ${(p.x2 - p.x1)}×${(p.y2 - p.y1)}px`
+                );
+            });
+        }
 
         if (!placas || placas.length === 0) {
 
