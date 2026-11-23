@@ -455,10 +455,19 @@ async function cargarModeloOCR() {
         if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
 
         const buffer = await respuesta.arrayBuffer();
-        modeloOCR = await SesionONNX.crear(buffer, {
-            tamanoEntrada: 128,
-            etiqueta: "OCR ONNX"
-        });
+
+        const opciones = {
+            executionProviders: ["webgpu", "wasm"]
+        };
+
+        modeloOCR = await ort.InferenceSession.create(buffer, opciones);
+
+        modeloOCR.inputNames = modeloOCR.inputNames || [modeloOCR.inputNames?.[0]];
+        modeloOCR.outputNames = modeloOCR.outputNames || [modeloOCR.outputNames?.[0]];
+
+        // Warmup con uint8.
+        const warmup = new ort.Tensor("uint8", new Uint8Array(1 * 64 * 128 * 3), [1, 64, 128, 3]);
+        await modeloOCR.run({ [modeloOCR.inputNames[0]]: warmup });
 
         console.log("Modelo OCR ONNX cargado.", modeloOCR.inputNames, modeloOCR.outputNames);
 
@@ -511,9 +520,11 @@ async function leerMatriculaONNX(imagen) {
             tensor[i * 3 + 2] = datos[p + 2];
         }
 
-        const salida = await modeloOCR.run(tensor, [1, altoObj, anchoObj, 3]);
+        const tensorObj = new ort.Tensor("uint8", tensor, [1, altoObj, anchoObj, 3]);
 
-        const logits = salida;
+        const salida = await modeloOCR.run({ [modeloOCR.inputNames[0]]: tensorObj });
+
+        const logits = salida[modeloOCR.outputNames[0]].data;
         const numT = 10;
         const numC = 37;
         let texto = "";
