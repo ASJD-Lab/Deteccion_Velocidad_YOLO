@@ -508,9 +508,15 @@ async function leerMatriculaONNX(imagen) {
 
         const salida = await modeloOCR.run({ [modeloOCR.inputNames[0]]: tensorObj });
 
-        const logits = salida[modeloOCR.outputNames[0]].data;
-        const numT = 10;
-        const numC = 37;
+        const outTensor = salida[modeloOCR.outputNames[0]];
+        const shape = outTensor.dims || [];
+        // Soportar salida [1,T,C] o [T,C].
+        const numT = shape.length >= 2 ? shape[shape.length - 2] : Math.floor(outTensor.data.length / 37);
+        const numC = shape.length >= 1 ? shape[shape.length - 1] : 37;
+
+        console.log("[OCR ONNX] output shape:", shape, "numT:", numT, "numC:", numC);
+
+        const logits = outTensor.data;
         let texto = "";
         let confianzaTotal = 0;
         let prevIdx = -1;
@@ -537,8 +543,8 @@ async function leerMatriculaONNX(imagen) {
                     maxIdx = c;
                 }
             }
-            // Filtrar timesteps con probabilidad baja (< 0.1).
-            if (maxProb < 0.1) {
+            // Filtrar timesteps con probabilidad baja (< 0.05).
+            if (maxProb < 0.05) {
                 prevIdx = -1;
                 continue;
             }

@@ -597,7 +597,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Aplicar reconocimiento OCR.
         // Usar ONNX como principal (sin Tesseract).
-        const resultadoOCR = await leerMatriculaONNX(canvasPlacaOCR);
+        let resultadoOCR = await leerMatriculaONNX(canvasPlacaOCR);
+
+        // Fallback a Tesseract si ONNX no identifica la placa.
+        if (!resultadoOCR || !resultadoOCR.identificada) {
+            try {
+                const resTess = await leerMatricula(canvasPlacaOCR);
+                if (resTess && resTess.identificada) {
+                    resultadoOCR = resTess;
+                }
+            } catch (e) {
+                console.warn("Fallback Tesseract falló:", e);
+            }
+        }
 
         if (sesionActual !== sesionVideo) return;
 
