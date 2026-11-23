@@ -77,11 +77,9 @@ async function inicializarOCR() {
             tessedit_char_whitelist:
                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
 
-            // SINGLE_BLOCK es más tolerante que SINGLE_LINE:
-            // captura texto en múltiples líneas (estado + número),
-            // lo que mejora la lectura de placas con dos renglones.
+            // SINGLE_LINE es mejor para placas de una sola línea.
             tessedit_pageseg_mode:
-                Tesseract.PSM.SINGLE_BLOCK
+                Tesseract.PSM.SINGLE_LINE
 
         });
 
@@ -233,21 +231,33 @@ function prepararImagenOCR(imagen) {
         datos.data[i + 2] = gris;
     }
 
-    // Calcular umbral con Otsu.
-    const umbral = calcularUmbralOtsu(datos.data, datos.data.length);
-
-    console.log(`[OCR preproceso] umbral Otsu: ${umbral}, tamaño: ${ancho}×${alto}`);
-
-    // Si Otsu devuelve un valor extremo (<30 o >220), la imagen
-    // es casi uniforme y binarizar la destruiría. Usar 128 como
-    // fallback para no invertir los colores.
-    const umbralFinal = (umbral < 30 || umbral > 220) ? 128 : umbral;
-
-    for (let i = 0; i < datos.data.length; i += 4) {
-        const valor = datos.data[i] > umbralFinal ? 255 : 0;
-        datos.data[i]     = valor;
-        datos.data[i + 1] = valor;
-        datos.data[i + 2] = valor;
+    // Binarización adaptativa: calcular umbral por bloques
+    // de 32×32 para manejar sombras e iluminación variable.
+    const bloque = 32;
+    for (let y = 0; y < alto; y += bloque) {
+        for (let x = 0; x < ancho; x += bloque) {
+            const xFin = Math.min(x + bloque, ancho);
+            const yFin = Math.min(y + bloque, alto);
+            let suma = 0, cuenta = 0;
+            for (let yy = y; yy < yFin; yy++) {
+                for (let xx = x; xx < xFin; xx++) {
+                    const idx = (yy * ancho + xx) * 4;
+                    suma += datos.data[idx];
+                    cuenta++;
+                }
+            }
+            const media = cuenta > 0 ? suma / cuenta : 128;
+            const umbralBloque = media * 0.9; // ligeramente por debajo de la media
+            for (let yy = y; yy < yFin; yy++) {
+                for (let xx = x; xx < xFin; xx++) {
+                    const idx = (yy * ancho + xx) * 4;
+                    const valor = datos.data[idx] > umbralBloque ? 255 : 0;
+                    datos.data[idx]     = valor;
+                    datos.data[idx + 1] = valor;
+                    datos.data[idx + 2] = valor;
+                }
+            }
+        }
     }
 
     ctx.putImageData(datos, 0, 0);
@@ -287,6 +297,20 @@ function normalizarMatricula(texto) {
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "")
         .trim();
+
+}
+
+// Normalizar variantes OCR comunes antes de votar.
+function normalizarVariantes(texto) {
+
+    if (!texto) return texto;
+
+    return texto
+        .replace(/O/g, "0")
+        .replace(/I/g, "1")
+        .replace(/B/g, "8")
+        .replace(/S/g, "5")
+        .replace(/Z/g, "2");
 
 }
 
@@ -359,9 +383,31 @@ async function leerMatricula(imagen) {
 
         }
 
-        const resultado = await trabajadorOCR.recognize(
-            imagenPreparada
-        );
+        // Probar también la versión invertida (blanco↔negro)
+        // y elegir la de mayor confianza.
+        const canvasInvertido = document.createElement("canvas");
+        canvasInvertido.width = imagenPreparada.width;
+        canvasInvertido.height = imagenPreparada.height;
+        const ctxInv = canvasInvertido.getContext("2d");
+        ctxInv.drawImage(imagenPreparada, 0, 0);
+        const datosInv = ctxInv.getImageData(0, 0, canvasInvertido.width, canvasInvertido.height);
+        for (let i = 0; i < datosInv.data.length; i += 4) {
+            datosInv.data[i]     = 255 - datosInv.data[i];
+            datosInv.data[i + 1] = 255 - datosInv.data[i + 1];
+            datosInv.data[i + 2] = 255 - datosInv.data[i + 2];
+        }
+        ctxInv.putImageData(datosInv, 0, 0);
+
+        const resultados = await Promise.all([
+            trabajadorOCR.recognize(imagenPreparada),
+            trabajadorOCR.recognize(canvasInvertido)
+        ]);
+
+        const resultado = resultados.reduce((a, b) => {
+            const confA = Number(a?.data?.confidence || 0);
+            const confB = Number(b?.data?.confidence || 0);
+            return confB > confA ? b : a;
+        });
 
         const textoOriginal = resultado.data.text || "";
 
@@ -378,7 +424,7 @@ async function leerMatricula(imagen) {
         //   imágenes de video; exigir 35 descarta lecturas válidas)
         const identificada =
             esPlacaMexicana(texto) &&
-            confianza >= 20;
+            confianza >= 15;
 
         console.log("Resultado OCR:", {
             texto,

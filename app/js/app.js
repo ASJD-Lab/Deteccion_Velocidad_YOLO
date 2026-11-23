@@ -500,7 +500,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (resultadoOCR && resultadoOCR.texto) {
-            vehiculo.lecturasOCR.push(resultadoOCR.texto);
+            const textoNorm = (typeof normalizarVariantes === "function")
+                ? normalizarVariantes(resultadoOCR.texto)
+                : resultadoOCR.texto;
+            vehiculo.lecturasOCR.push(textoNorm);
         }
 
         if (resultadoOCR && resultadoOCR.identificada) {
