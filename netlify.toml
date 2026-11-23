@@ -1,0 +1,13 @@
+# Static site: plain HTML/JS in app/, no build step or package manager.
+# The site is published from the repository root because app/js loads the
+# ONNX models via "../modelos/...", which resolves to the root modelos/ folder.
+[build]
+  publish = "."
+  command = ""
+
+# Send visitors from the site root to the app. A redirect (not a rewrite) is
+# needed so the browser URL is /app/ and the app's relative paths resolve.
+[[redirects]]
+  from = "/"
+  to = "/app/"
+  status = 302
