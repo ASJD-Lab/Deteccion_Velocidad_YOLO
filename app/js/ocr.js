@@ -502,13 +502,13 @@ async function leerMatriculaONNX(imagen) {
         ctx.drawImage(imagen, 0, 0, anchoObj, altoObj);
 
         const datos = ctx.getImageData(0, 0, anchoObj, altoObj).data;
-        const tensor = new Float32Array(1 * altoObj * anchoObj * 3);
+        const tensor = new Uint8Array(1 * altoObj * anchoObj * 3);
 
         for (let i = 0; i < altoObj * anchoObj; i++) {
             const p = i * 4;
-            tensor[i * 3]     = datos[p] / 255;
-            tensor[i * 3 + 1] = datos[p + 1] / 255;
-            tensor[i * 3 + 2] = datos[p + 2] / 255;
+            tensor[i * 3]     = datos[p];
+            tensor[i * 3 + 1] = datos[p + 1];
+            tensor[i * 3 + 2] = datos[p + 2];
         }
 
         const salida = await modeloOCR.run(tensor, [1, altoObj, anchoObj, 3]);
