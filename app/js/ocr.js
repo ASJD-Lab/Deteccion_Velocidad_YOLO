@@ -77,9 +77,9 @@ async function inicializarOCR() {
             tessedit_char_whitelist:
                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
 
-            // SINGLE_LINE es mejor para placas de una sola línea.
+            // SINGLE_BLOCK es más tolerante con ruido.
             tessedit_pageseg_mode:
-                Tesseract.PSM.SINGLE_LINE
+                Tesseract.PSM.SINGLE_BLOCK
 
         });
 
@@ -197,11 +197,11 @@ function prepararImagenOCR(imagen) {
         return null;
     }
 
-    // Escalar para facilitar la lectura. Mínimo 2×,
-    // máximo 6× (aumentado de 4× para placas lejanas).
+    // Escalar para facilitar la lectura. Máximo 2×
+    // para evitar distorsión de la altura.
     const escala = Math.max(
-        2,
-        Math.min(6, 500 / anchoOriginal)
+        1,
+        Math.min(2, 200 / anchoOriginal)
     );
 
     const ancho = Math.round(anchoOriginal * escala);
@@ -231,33 +231,17 @@ function prepararImagenOCR(imagen) {
         datos.data[i + 2] = gris;
     }
 
-    // Binarización adaptativa: calcular umbral por bloques
-    // de 32×32 para manejar sombras e iluminación variable.
-    const bloque = 32;
-    for (let y = 0; y < alto; y += bloque) {
-        for (let x = 0; x < ancho; x += bloque) {
-            const xFin = Math.min(x + bloque, ancho);
-            const yFin = Math.min(y + bloque, alto);
-            let suma = 0, cuenta = 0;
-            for (let yy = y; yy < yFin; yy++) {
-                for (let xx = x; xx < xFin; xx++) {
-                    const idx = (yy * ancho + xx) * 4;
-                    suma += datos.data[idx];
-                    cuenta++;
-                }
-            }
-            const media = cuenta > 0 ? suma / cuenta : 128;
-            const umbralBloque = media * 0.9; // ligeramente por debajo de la media
-            for (let yy = y; yy < yFin; yy++) {
-                for (let xx = x; xx < xFin; xx++) {
-                    const idx = (yy * ancho + xx) * 4;
-                    const valor = datos.data[idx] > umbralBloque ? 255 : 0;
-                    datos.data[idx]     = valor;
-                    datos.data[idx + 1] = valor;
-                    datos.data[idx + 2] = valor;
-                }
-            }
-        }
+    // Solo escala de grises (sin binarización) para baseline.
+    // La binarización adaptativa destruía la imagen.
+    for (let i = 0; i < datos.data.length; i += 4) {
+        const gris = Math.round(
+            0.299 * datos.data[i] +
+            0.587 * datos.data[i + 1] +
+            0.114 * datos.data[i + 2]
+        );
+        datos.data[i]     = gris;
+        datos.data[i + 1] = gris;
+        datos.data[i + 2] = gris;
     }
 
     ctx.putImageData(datos, 0, 0);
@@ -383,31 +367,9 @@ async function leerMatricula(imagen) {
 
         }
 
-        // Probar también la versión invertida (blanco↔negro)
-        // y elegir la de mayor confianza.
-        const canvasInvertido = document.createElement("canvas");
-        canvasInvertido.width = imagenPreparada.width;
-        canvasInvertido.height = imagenPreparada.height;
-        const ctxInv = canvasInvertido.getContext("2d");
-        ctxInv.drawImage(imagenPreparada, 0, 0);
-        const datosInv = ctxInv.getImageData(0, 0, canvasInvertido.width, canvasInvertido.height);
-        for (let i = 0; i < datosInv.data.length; i += 4) {
-            datosInv.data[i]     = 255 - datosInv.data[i];
-            datosInv.data[i + 1] = 255 - datosInv.data[i + 1];
-            datosInv.data[i + 2] = 255 - datosInv.data[i + 2];
-        }
-        ctxInv.putImageData(datosInv, 0, 0);
-
-        const resultados = await Promise.all([
-            trabajadorOCR.recognize(imagenPreparada),
-            trabajadorOCR.recognize(canvasInvertido)
-        ]);
-
-        const resultado = resultados.reduce((a, b) => {
-            const confA = Number(a?.data?.confidence || 0);
-            const confB = Number(b?.data?.confidence || 0);
-            return confB > confA ? b : a;
-        });
+        const resultado = await trabajadorOCR.recognize(
+            imagenPreparada
+        );
 
         const textoOriginal = resultado.data.text || "";
 
