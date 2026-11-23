@@ -382,6 +382,66 @@ document.addEventListener("DOMContentLoaded", () => {
     // 9. BUSCAR Y LEER MATRÍCULA
     // ==================================================
 
+    // ==================================================
+    // MEJORAR RECORTE DEL VEHÍCULO (PREPROCESAMIENTO)
+    // Ecualización de histograma + escalado para reducir
+    // reflejos y mejorar la detección de placas.
+    // ==================================================
+    function mejorarRecorteVehiculo(imagen) {
+
+        const anchoOrig = imagen.width || imagen.videoWidth || imagen.naturalWidth;
+        const altoOrig = imagen.height || imagen.videoHeight || imagen.naturalHeight;
+        if (!anchoOrig || !altoOrig) return imagen;
+
+        // Escalar ×2 para mejorar la detección.
+        const escala = 2;
+        const ancho = anchoOrig * escala;
+        const alto = altoOrig * escala;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = ancho;
+        canvas.height = alto;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(imagen, 0, 0, ancho, alto);
+
+        const datos = ctx.getImageData(0, 0, ancho, alto);
+
+        // Convertir a YUV y ecualizar el canal Y.
+        const hist = new Array(256).fill(0);
+        for (let i = 0; i < datos.data.length; i += 4) {
+            const y = Math.round(0.299 * datos.data[i] + 0.587 * datos.data[i + 1] + 0.114 * datos.data[i + 2]);
+            hist[y]++;
+        }
+
+        // CDF
+        const cdf = new Array(256).fill(0);
+        cdf[0] = hist[0];
+        for (let i = 1; i < 256; i++) {
+            cdf[i] = cdf[i - 1] + hist[i];
+        }
+
+        const total = ancho * alto;
+        const cdfMin = cdf.find(v => v > 0) || 0;
+        const escalaHist = 255 / (total - cdfMin);
+
+        for (let i = 0; i < datos.data.length; i += 4) {
+            const r = datos.data[i];
+            const g = datos.data[i + 1];
+            const b = datos.data[i + 2];
+            const y = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+            const yEq = Math.round((cdf[y] - cdfMin) * escalaHist);
+            const factor = y > 0 ? yEq / y : 1;
+            datos.data[i]     = Math.min(255, Math.round(r * factor));
+            datos.data[i + 1] = Math.min(255, Math.round(g * factor));
+            datos.data[i + 2] = Math.min(255, Math.round(b * factor));
+        }
+
+        ctx.putImageData(datos, 0, 0);
+        return canvas;
+
+    }
+
     async function reconocerMatriculaVehiculo(
         vehiculo,
         sesionActual
@@ -395,9 +455,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (!recorte) return;
 
+        // Preprocesar el recorte para reducir reflejos y
+        // mejorar la detección de placas (CLAHE simplificado
+        // por ecualización de histograma + escalado).
+        const recorteMejorado = mejorarRecorteVehiculo(recorte.imagen);
+
         // Detectar matrículas dentro del vehículo.
         const placas = await detectarMatriculas(
-            recorte.imagen,
+            recorteMejorado,
             CONFIANZA_PLACA
         );
 
@@ -463,13 +528,13 @@ document.addEventListener("DOMContentLoaded", () => {
         canvasPlacaOCR.width  = Math.max(1, Math.ceil(srcAncho));
         canvasPlacaOCR.height = Math.max(1, Math.ceil(srcAlto));
 
-        // Recortar desde la captura del vehículo (con padding).
+        // Recortar desde la captura mejorada del vehículo (con padding).
         ctxPlacaOCR.drawImage(
-            recorte.imagen,
-            srcX,
-            srcY,
-            srcAncho,
-            srcAlto,
+            recorteMejorado,
+            srcX * 2,
+            srcY * 2,
+            srcAncho * 2,
+            srcAlto * 2,
             0,
             0,
             canvasPlacaOCR.width,
