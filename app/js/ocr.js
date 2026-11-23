@@ -542,6 +542,11 @@ async function leerMatriculaONNX(imagen) {
                     maxIdx = c;
                 }
             }
+            // Filtrar timesteps con probabilidad baja (< 0.3).
+            if (maxProb < 0.3) {
+                prevIdx = -1;
+                continue;
+            }
             if (maxIdx !== BLANK_IDX && maxIdx !== prevIdx) {
                 texto += ALFABETO_OCR[maxIdx];
                 confianzaTotal += maxProb;
