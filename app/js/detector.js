@@ -5,7 +5,7 @@
 
 let modeloDetector = null;
 
-const TAMANO_ENTRADA = 640;
+const TAMANO_ENTRADA = 416;
 
 // Canvas reutilizable para evitar crearlo en cada inferencia.
 const canvasDetector = document.createElement("canvas");
