@@ -11,3 +11,9 @@
   from = "/"
   to = "/app/"
   status = 302
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cross-Origin-Opener-Policy = "same-origin"
+    Cross-Origin-Embedder-Policy = "credentialless"

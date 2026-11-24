@@ -65,6 +65,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let procesando = false;
     let deteccionEnCurso = false;
 
+    const esMovil = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
     let ultimaDeteccion = 0;
     let bucleRAF = null;
 
@@ -700,15 +702,23 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        // Todos los vehículos seguidos pueden participar.
+        // Solo vehículos que superen el límite configurado y
+        // cuya matrícula no se haya procesado ya por infracción.
+        const limite = Number(limiteVelocidad.value) || 0;
+
         const candidatos = vehiculos.filter(vehiculo => {
+
+            const velocidad = vehiculo.velocidades?.velocidad || 0;
 
             return (
                 vehiculo.fotogramasPerdidos === 0 &&
                 vehiculo.hits >= 1 &&
                 !vehiculo.matricula &&
-                (vehiculo.ocrIntentos || 0) < MAX_INTENTOS_OCR &&
-                !vehiculo.ocrFinalizado
+                !vehiculo.ocrFinalizado &&
+                !vehiculo.ocrInfraccionProcesada &&
+                velocidad > 0 &&
+                limite > 0 &&
+                velocidad > limite
             );
 
         });
@@ -732,6 +742,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const vehiculo = candidatos[0];
 
         const sesionActual = sesionVideo;
+
+        // Marcar para no reintentar OCR por infracción en este ID.
+        vehiculo.ocrInfraccionProcesada = true;
 
         ocrProcesando = true;
         ultimoIntentoOCR = ahora;
@@ -1419,6 +1432,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (
+            esMovil &&
+            timestamp - ultimaDeteccion < INTERVALO_DETECCION * 2
+        ) {
+            return;
+        }
+
+        if (
             timestamp - ultimaDeteccion >= INTERVALO_DETECCION &&
             !deteccionEnCurso
         ) {
@@ -1666,8 +1686,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 // 9. DETECTAR Y LEER MATRÍCULAS
                 // --------------------------------------
 
-                // Se aplica a TODOS los vehículos seguidos.
-                // No depende de que exista una infracción.
+                // OCR solo bajo demanda: vehículos que superen el límite.
                 procesarOCR(vehiculos);
 
                 // --------------------------------------
