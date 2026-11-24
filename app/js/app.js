@@ -96,7 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let ultimoIntentoOCR = 0;
 
     const INTERVALO_OCR = 300;
-    const CONFIANZA_PLACA = 0.05;
+    const CONFIANZA_PLACA = 0.03;
     const MAX_INTENTOS_OCR = 20;
 
     // Identifica cada reproducción.
@@ -655,6 +655,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
             vehiculo.matricula = resultadoOCR.texto;
 
+            vehiculo.ocrInfraccionProcesada = true;
+
             vehiculo.confianzaOCR = resultadoOCR.confianza;
 
             vehiculo.ocrFinalizado = true;
@@ -715,7 +717,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 vehiculo.hits >= 1 &&
                 !vehiculo.matricula &&
                 !vehiculo.ocrFinalizado &&
-                !vehiculo.ocrInfraccionProcesada &&
+                (!vehiculo.ocrInfraccionProcesada || !vehiculo.matricula) &&
                 velocidad > 0 &&
                 limite > 0 &&
                 velocidad > limite
@@ -742,9 +744,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const vehiculo = candidatos[0];
 
         const sesionActual = sesionVideo;
-
-        // Marcar para no reintentar OCR por infracción en este ID.
-        vehiculo.ocrInfraccionProcesada = true;
 
         ocrProcesando = true;
         ultimoIntentoOCR = ahora;
