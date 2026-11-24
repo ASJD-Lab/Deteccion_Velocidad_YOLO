@@ -95,9 +95,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let ocrProcesando = false;
     let ultimoIntentoOCR = 0;
 
-    const INTERVALO_OCR = 300;
-    const CONFIANZA_PLACA = 0.03;
-    const MAX_INTENTOS_OCR = 20;
+    const INTERVALO_OCR = 500;
+    const CONFIANZA_PLACA = 0.15;
+    const MAX_INTENTOS_OCR = 8;
 
     // Identifica cada reproducción.
     let sesionVideo = 0;

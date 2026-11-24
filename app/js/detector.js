@@ -5,7 +5,7 @@
 
 let modeloDetector = null;
 
-const TAMANO_ENTRADA = 416;
+const TAMANO_ENTRADA = 640;
 
 // Canvas reutilizable para evitar crearlo en cada inferencia.
 const canvasDetector = document.createElement("canvas");
@@ -29,7 +29,7 @@ async function cargarModelo() {
         console.log("Cargando modelo YOLO de matrículas...");
 
         const respuesta = await fetch(
-            "../modelos/best_deteccion_opt.onnx"
+            "../modelos/best_detector_placas_kaggle.onnx"
         );
 
         if (!respuesta.ok) {

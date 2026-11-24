@@ -23,7 +23,7 @@ function calcularVelocidad(distancia, tiempo) {
     }
 
     const velocidad = (distancia / tiempo) * 3.6;
-    if (velocidad < 1 || velocidad > 220) return null; // Clamp 220 km/h
+    if (velocidad < 5 || velocidad > 220) return null; // Clamp: descarta <5 km/h y >220 km/h
 
     return Number(velocidad.toFixed(2));
 }
@@ -147,8 +147,9 @@ function registrarMuestraBbox(vehiculo, deteccion, tiempo) {
 // ======================================================
 
 function verificarInfraccion(velocidad, limite) {
-    const limiteConTolerancia = limite;
-    const infraccion = velocidad > limite;
+    const tolerancia = 5;
+    const limiteConTolerancia = limite + tolerancia;
+    const infraccion = velocidad > limiteConTolerancia;
     const exceso = Math.max(0, velocidad - limite);
 
     return {
