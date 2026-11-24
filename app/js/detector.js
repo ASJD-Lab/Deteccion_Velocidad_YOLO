@@ -29,7 +29,7 @@ async function cargarModelo() {
         console.log("Cargando modelo YOLO de matrículas...");
 
         const respuesta = await fetch(
-            "../modelos/best_deteccion.onnx"
+            "../modelos/best_deteccion_opt.onnx"
         );
 
         if (!respuesta.ok) {
